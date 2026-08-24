@@ -1,0 +1,250 @@
+% =====================================================================
+%  Section 3.5 — Proposed Improvements and Expected Gains
+%  Insert after Section 3.4 (Limitation).
+%
+%  NOTE: every number in this section is a PROJECTION derived from the
+%  failure modes observed in Section 3.3, not a measured result.
+%  The wording below states this explicitly and should not be softened.
+% =====================================================================
+
+\section{Proposed Improvements and Expected Gains}
+\label{sec:expected-gains}
+
+The evaluation in Section~\ref{sec:qualitative-eval} identified three recurring
+failure modes: weak handling of multi-condition prompts, insufficient factual
+grounding, and inconsistent enforcement of negative constraints. This section
+maps each failure mode onto a concrete architectural change and estimates the
+gain that change is expected to produce under the same evaluation protocol.
+
+\paragraph{Status of the figures reported here.}
+All scores in this section are \emph{projections}, not measurements. They are
+derived analytically from the failure modes documented in
+Section~\ref{sec:qualitative-eval} by asking, for each observed error, whether
+the proposed mechanism would have prevented it. They have not been obtained by
+re-running the evaluation, and they are reported here only to motivate the
+prioritisation of future work. We deliberately distinguish between changes whose
+effect is \emph{deterministic} (the mechanism structurally forbids the observed
+error) and changes whose effect is \emph{probabilistic} (the mechanism makes the
+error less likely but cannot exclude it), and we assign confidence levels
+accordingly.
+
+\subsection{Proposed Changes}
+\label{sec:proposed-changes}
+
+\begin{description}
+
+  \item[C1 --- Hybrid retrieval with rank fusion.]
+  The current pipeline treats lexical (BM25) retrieval as a fallback that is
+  reached only when vector retrieval is unavailable, so in practice the lexical
+  index is never queried. Both retrievers would instead run on every query and
+  their ranked outputs would be merged using Reciprocal Rank Fusion (RRF), which
+  combines documents by rank rather than by score and therefore requires no
+  normalisation between the two incomparable score scales. The motivation is
+  that the two retrievers fail in complementary ways: dense retrieval degrades
+  on proper nouns, where a title such as \emph{Stardew Valley} is embedded close
+  to its genre neighbours, whereas lexical retrieval degrades on paraphrase and
+  mood-based queries.
+
+  \item[C2 --- Cross-encoder re-ranking.]
+  Section~\ref{sec:ranking} currently orders candidates by their retrieval score
+  and truncates, which is not re-ranking in a meaningful sense. Generative
+  re-ranking with the local LLM was implemented but disabled because it added
+  approximately 550\,s per query on CPU. The cost is dominated by autoregressive
+  decoding over a long prompt rather than by the ranking task itself. A
+  cross-encoder re-ranker scores each query--candidate pair in a single forward
+  pass and produces no text, reducing the same operation to a few seconds on the
+  same hardware. Because the cross-encoder attends to the full query against
+  each candidate, it is specifically strong on multi-clause queries, where a
+  single dense vector tends to be dominated by the most salient term.
+
+  \item[C3 --- Structured generation with identifier validation.]
+  The answer-generation step currently emits free text from which titles are
+  recovered by regular expressions and matched back to records by name prefix.
+  Constrained decoding against a JSON schema would instead force the model to
+  return application identifiers, which are then validated against the candidate
+  set before display. Any identifier outside the candidate set is discarded and
+  counted.
+
+  \item[C4 --- Constraint decomposition and pre-filtering.]
+  Hard constraints (price, platform, multiplayer support) and soft preferences
+  (mood, theme) are currently handled by the same substring-matching module, and
+  a hard constraint is silently dropped whenever it would empty the candidate
+  list. Decomposing the query into a structured filter and a semantic component
+  --- either by LLM tool calling or by the existing rule-based parser as a
+  fallback --- allows hard constraints to be pushed down into the SQL query, so
+  that filtering occurs \emph{before} retrieval rather than after it.
+
+  \item[C5 --- Review-aware quality scoring.]
+  The current popularity term uses the positive review count alone and therefore
+  ignores negative reviews entirely. Replacing it with the Wilson lower bound of
+  the positive ratio, blended with log review volume, penalises titles whose
+  high ratings rest on very few observations while still rewarding
+  well-established games.
+
+  \item[C6 --- Diversity constraints.]
+  Caps on the number of results sharing a developer or a primary tag prevent a
+  shortlist from collapsing onto near-identical titles. The constraint is
+  defined so that it may only reorder results, never reduce their number.
+
+\end{description}
+
+\subsection{Projected Results by Prompt Category}
+\label{sec:projected-results}
+
+Table~\ref{tab:expected-gains} maps each prompt category from
+Table~\ref{tab:test-prompts} onto the changes expected to affect it.
+
+\begin{table}[h]
+\centering
+\caption{Projected scores by prompt category under the evaluation protocol of
+Section~\ref{sec:qualitative-eval}. \textbf{All ``Projected'' values are
+estimates derived from observed failure modes, not measurements.}}
+\label{tab:expected-gains}
+\small
+\begin{tabular}{llccclc}
+\hline
+\textbf{\#} & \textbf{Category} & \textbf{Current} & \textbf{Projected} &
+\textbf{$\Delta$} & \textbf{Primary driver} & \textbf{Conf.} \\
+\hline
+1 & Simple / Vague       & 88 & 92 & $+4$  & C5                & High   \\
+2 & Detailed Descriptive & 50 & 75 & $+25$ & C2, C4            & Medium \\
+3 & Negation-Constrained & 61 & 78 & $+17$ & C4, C2            & Medium \\
+4 & Hard-Constrained     & 50 & 87 & $+37$ & C3, C4            & High   \\
+5 & Analogy              & 52 & 73 & $+21$ & C1, C2            & Low    \\
+\hline
+  & \textbf{Mean}        & \textbf{60.2} & \textbf{81.0} & $\mathbf{+20.8}$ & & \\
+\hline
+  & ChatGPT reference    & 95.4 & 95.4 & --- & & \\
+  & Gap to reference     & $-35.2$ & $-14.4$ & --- & & \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Category 4 (Hard-Constrained), $50 \rightarrow 87$, high confidence.}
+This category shows the largest projected gain because its dominant error is
+deterministic rather than a matter of degree. Two of the five recommended
+titles, \emph{Wolvesville} and \emph{Sonder}, could not be verified on Steam,
+which forfeits most of the 30-point verifiability dimension. Under C3 these
+titles cannot be returned at all: they are absent from the underlying snapshot,
+therefore absent from the candidate set, therefore rejected by identifier
+validation. The remaining loss on the relevance dimension is addressed by C4,
+which enforces ``free'' and ``co-operative'' as SQL predicates before retrieval
+rather than as post-hoc filters that are dropped when they would empty the
+candidate list. We expect the verifiability dimension to approach its maximum.
+
+\paragraph{Category 2 (Detailed Descriptive), $50 \rightarrow 75$, medium confidence.}
+The observed failure is the loss of one clause of a two-clause query: the system
+matched ``intellectually stimulating'' while ignoring ``require some gaming
+experience''. This is the canonical case in which cross-encoders outperform
+bi-encoders (C2), since the re-ranker evaluates the complete query against each
+candidate and can penalise candidates satisfying only one clause, whereas a
+single query embedding is dominated by its most salient term. C4 reinforces this
+by representing the clauses as separate criteria. The projection is moderate
+rather than large because clause coverage is improved but not guaranteed.
+
+\paragraph{Category 3 (Negation-Constrained), $61 \rightarrow 78$, medium confidence.}
+Two distinct errors occurred. The recommendation of a single-player title under a
+``play with friends'' requirement is a hard-constraint violation and is addressed
+deterministically by C4, using the multiplayer category field as a pre-filter.
+The recommendation of a visually cute title under a ``no cozy or cute'' exclusion
+is a semantic negation, which is addressed only probabilistically. Dense
+embeddings are known to be weak at negation, since a phrase and its negation
+share almost all of their lexical and topical content and therefore lie close in
+embedding space; the cross-encoder and an explicit exclusion field improve on
+this but cannot eliminate it. The projection is therefore deliberately more
+conservative than for Categories 2 and 4.
+
+\paragraph{Category 5 (Analogy), $52 \rightarrow 73$, low confidence.}
+The system anchored on ``more challenging'' and lost the ``like Stardew Valley''
+reference, returning titles such as \emph{Diablo IV} and \emph{ICARUS}. Treating
+an explicit title reference as an entity anchor --- resolving it against the
+catalogue and using its tag profile as the semantic query, with the remaining
+clause as a modifier --- is expected to recover much of this, and C1 helps
+because exact matching of a proper noun is precisely where lexical retrieval
+outperforms dense retrieval. This projection carries the lowest confidence
+because analogical reasoning depends primarily on world knowledge about how
+games actually play, which is the dimension on which a small local model is least
+competitive.
+
+\paragraph{Category 1 (Simple / Vague), $88 \rightarrow 92$, high confidence but limited headroom.}
+Performance here is already close to the ceiling. The residual gap is
+concentrated in the projected-satisfaction dimension: the recommended titles are
+valid but obscure, whereas the reference system returned widely acclaimed ones.
+C5 addresses exactly this by promoting, among comparably relevant candidates,
+those whose quality is supported by a large volume of reviews.
+
+\subsection{Projected Effect by Scoring Dimension}
+\label{sec:projected-dimensions}
+
+\begin{table}[h]
+\centering
+\caption{Projected effect by scoring dimension, averaged across the five
+prompts. \textbf{Estimates, not measurements.}}
+\label{tab:expected-dimensions}
+\small
+\begin{tabular}{lccl}
+\hline
+\textbf{Dimension} & \textbf{Current (est.)} & \textbf{Projected} & \textbf{Basis} \\
+\hline
+Verifiability (30)          & $\approx 22$ & $\approx 29$ & C3: structural, deterministic \\
+Relevance (30)              & $\approx 17$ & $\approx 24$ & C2, C4: probabilistic \\
+Projected satisfaction (40) & $\approx 21$ & $\approx 28$ & C5: bounded by model judgement \\
+\hline
+\end{tabular}
+\end{table}
+
+The dimension-level view clarifies where the gains originate. The verifiability
+dimension is the only one for which a structural guarantee is available:
+identifier validation converts hallucination from a probabilistic failure into
+an impossible one. Gains on relevance and projected satisfaction rest on
+improved ranking and are therefore expected but not guaranteed.
+
+\subsection{Expected Residual Gap}
+\label{sec:residual-gap}
+
+The projections close approximately 59\% of the measured gap to the commercial
+reference system but do not eliminate it, and we do not expect them to. As noted
+in Section~\ref{sec:eval-summary}, the reference system benefits from live web
+access, a substantially larger model, and world knowledge about how individual
+games actually play. The changes proposed here address retrieval coverage,
+ranking quality, and factual grounding; they do not confer knowledge of what
+makes a game satisfying to play. We therefore expect a persistent residual gap
+concentrated in the projected-satisfaction dimension and in the analogy
+category, both of which depend on that knowledge rather than on pipeline
+design.
+
+This bound is itself a useful finding: it separates the portion of the observed
+gap that is attributable to system architecture, and is therefore addressable
+within the constraints of this assignment, from the portion attributable to
+model scale and data freshness, which is not.
+
+\subsection{Proposed Revisions to the Evaluation Protocol}
+\label{sec:eval-protocol-revision}
+
+Verifying the projections above requires a stronger protocol than the one used
+in Section~\ref{sec:qualitative-eval}, for three reasons.
+
+\begin{enumerate}
+  \item \textbf{Sample size.} Five prompts, one per category, give a mean with a
+  wide confidence interval; a single prompt swing of ten points moves the
+  reported mean by two. We propose four to five prompts per category, for a
+  total of twenty to twenty-five.
+
+  \item \textbf{Judge variance.} An LLM judge is not deterministic, so a single
+  scoring pass conflates system differences with judge noise. We propose running
+  the judge three times per comparison and reporting the mean and standard
+  deviation, so that a claimed improvement can be checked against the
+  measurement noise.
+
+  \item \textbf{Diagnostic resolution.} A single composite score indicates that
+  a result is poor but not which stage caused it. We propose adding automatic
+  retrieval metrics --- Recall@50 for the retrieval stage and nDCG@10 for the
+  ranking stage --- computed against relevance labels derived from tag overlap
+  and validated against a manually annotated subset. Separating the two makes it
+  possible to distinguish a candidate that was never retrieved from one that was
+  retrieved and ranked too low, which the current protocol cannot do.
+\end{enumerate}
+
+Together these changes would allow the projections in
+Table~\ref{tab:expected-gains} to be confirmed or refuted per component, rather
+than assessed only in aggregate.
