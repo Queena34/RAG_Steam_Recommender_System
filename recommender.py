@@ -15,7 +15,7 @@ import numpy as np
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("RAGLOOKER_DB_PATH", BASE_DIR / "steam_games_reviews_25.sqlite"))
-INDEX_DIR = BASE_DIR / "vector_index"
+INDEX_DIR = Path(os.environ.get("RAGLOOKER_INDEX_DIR", BASE_DIR / "vector_index"))
 
 DEFAULT_MATCH_COUNT = 5
 RETRIEVAL_COUNT = 50        # candidates kept after fusion, before re-ranking
