@@ -30,7 +30,35 @@ INDEX_DIR = BASE_DIR / "vector_index"
 
 BATCH_SIZE = 100          # rows per SQLite fetch
 EMBED_BATCH = 50          # texts per Ollama embed call
-MAX_REVIEWS_PER_GAME = 20 # max review getted from each game
+# Review sampling. Reviews make up ~2/3 of every document, so how they are
+# chosen matters more than any other corpus decision.
+#   - Ordered by community helpfulness votes, not by length. Ordering by length
+#     puts the rambling 3000-character essays first, and only their opening
+#     200 characters ever reach the document -- usually preamble or jokes.
+#   - Length is capped on both ends: under 100 characters carries no detail,
+#     over 1500 is a review essay rather than an impression.
+#   - Negative reviews are kept as a separate stream. "too grindy", "way too
+#     hard", "buggy" exist nowhere else in the corpus, and queries asking to
+#     avoid those qualities cannot be served without them.
+MAX_POSITIVE_REVIEWS = 15
+MAX_NEGATIVE_REVIEWS = 5
+REVIEW_MIN_CHARS = 100
+REVIEW_MAX_CHARS = 1500
+
+# How much of the sampled text actually enters the document.
+DOC_POSITIVE_REVIEWS = 6
+DOC_NEGATIVE_REVIEWS = 3
+DOC_POSITIVE_CHARS = 200
+DOC_NEGATIVE_CHARS = 150
+
+# categories_json mixes gameplay facts with accessibility and hardware notes.
+# Only the gameplay ones belong in an embedding; "Custom Volume Controls" is
+# noise that every other game also carries.
+CATEGORY_WHITELIST = (
+    "Single-player", "Multi-player", "Co-op", "Online Co-op", "LAN Co-op",
+    "Shared/Split Screen Co-op", "PvP", "Online PvP", "LAN PvP",
+    "Shared/Split Screen PvP", "MMO", "Cross-Platform Multiplayer",
+)
 EMBED_MODEL = "nomic-embed-text"
 
 # nomic-embed-text is an asymmetric model: it expects a task prefix telling it
@@ -72,7 +100,11 @@ def get_ollama_embed_fn():
 # Document builder
 # ---------------------------------------------------------------------------
 
-def build_document(row: sqlite3.Row, reviews: list[str]) -> str:
+def build_document(
+    row: sqlite3.Row,
+    positive_reviews: list[str],
+    negative_reviews: list[str] | None = None,
+) -> str:
     parts = [f"Game: {row['name']}"]
 
     if row["short_description"]:
@@ -93,6 +125,14 @@ def build_document(row: sqlite3.Row, reviews: list[str]) -> str:
     except Exception:
         pass
 
+    try:
+        categories = json.loads(row["categories_json"] or "[]")
+        modes = [c for c in categories if c in CATEGORY_WHITELIST]
+        if modes:
+            parts.append(f"Modes: {', '.join(modes)}")
+    except Exception:
+        pass
+
     if row["release_date"]:
         parts.append(f"Release: {row['release_date']}")
 
@@ -102,36 +142,55 @@ def build_document(row: sqlite3.Row, reviews: list[str]) -> str:
         pct = round(100 * pos / (pos + neg))
         parts.append(f"Rating: {pct}% positive ({pos + neg} reviews)")
 
-    if reviews:
-        snippet = " | ".join(r[:200] for r in reviews[:5])
+    if positive_reviews:
+        snippet = " | ".join(
+            r[:DOC_POSITIVE_CHARS] for r in positive_reviews[:DOC_POSITIVE_REVIEWS]
+        )
         parts.append(f"Player reviews: {snippet}")
+
+    if negative_reviews:
+        snippet = " | ".join(
+            r[:DOC_NEGATIVE_CHARS] for r in negative_reviews[:DOC_NEGATIVE_REVIEWS]
+        )
+        parts.append(f"Criticism: {snippet}")
 
     return DOC_PREFIX + "\n".join(parts)
 
 
 def fetch_reviews_for_batch(
     conn: sqlite3.Connection, app_ids: list[int]
-) -> dict[int, list[str]]:
+) -> dict[int, tuple[list[str], list[str]]]:
+    """Return {appid: (positive_reviews, negative_reviews)} for one batch.
+
+    Ranked by community helpfulness votes rather than by length, and windowed
+    on length so neither one-line reactions nor review essays dominate. The
+    two sentiments are ranked independently so a well-reviewed game still
+    contributes criticism, and a poorly-reviewed one still contributes praise.
+    """
     placeholders = ",".join("?" * len(app_ids))
     rows = conn.execute(
         f"""
-        SELECT appid, review FROM (
-            SELECT appid, review,
+        SELECT appid, review, voted_up FROM (
+            SELECT appid, review, voted_up,
                    ROW_NUMBER() OVER (
-                       PARTITION BY appid ORDER BY LENGTH(review) DESC
+                       PARTITION BY appid, voted_up
+                       ORDER BY votes_up DESC, LENGTH(review) DESC
                    ) AS rn
             FROM reviews
             WHERE appid IN ({placeholders})
-              AND voted_up = 1
               AND review IS NOT NULL
-              AND LENGTH(TRIM(review)) > 30
-        ) WHERE rn <= {MAX_REVIEWS_PER_GAME}
+              AND LENGTH(TRIM(review)) BETWEEN ? AND ?
+        )
+        WHERE (voted_up = 1 AND rn <= ?) OR (voted_up = 0 AND rn <= ?)
         """,
-        app_ids,
+        (*app_ids, REVIEW_MIN_CHARS, REVIEW_MAX_CHARS,
+         MAX_POSITIVE_REVIEWS, MAX_NEGATIVE_REVIEWS),
     ).fetchall()
-    result: dict[int, list[str]] = {}
-    for appid, review in rows:
-        result.setdefault(int(appid), []).append(review)
+
+    result: dict[int, tuple[list[str], list[str]]] = {}
+    for appid, review, voted_up in rows:
+        pos, neg = result.setdefault(int(appid), ([], []))
+        (pos if voted_up else neg).append(review)
     return result
 
 
@@ -265,7 +324,7 @@ def main() -> None:
             rows = conn.execute(
                 """
                 SELECT appid, name, short_description, genres_json, tags_json,
-                       release_date, positive, negative
+                       categories_json, release_date, positive, negative
                 FROM games
                 WHERE name IS NOT NULL AND TRIM(name) != '' AND positive > ?
                 ORDER BY appid
@@ -288,7 +347,7 @@ def main() -> None:
                 reviews_map = fetch_reviews_for_batch(conn, app_ids_int)
 
                 documents = [
-                    build_document(row, reviews_map.get(row["appid"], []))
+                    build_document(row, *reviews_map.get(row["appid"], ([], [])))
                     for row in new_rows
                 ]
                 ids = [str(r["appid"]) for r in new_rows]
