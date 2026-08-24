@@ -13,3 +13,9 @@ venv/
 
 # macOS
 .DS_Store
+
+# Data archives
+*.zip
+*.tar.gz
+*.sqlite-shm
+*.sqlite-wal
