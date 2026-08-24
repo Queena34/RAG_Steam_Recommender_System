@@ -112,6 +112,7 @@ class GameSearchEngine:
         self.faiss_app_ids: list[str] = []
         self.embed_fn = None             # (str) → list[float]
         self.embed_model: str | None = None
+        self.query_prefix: str = ""      # set from meta.json by _init_vector_index
         self.llm_model: str | None = None
 
         # BM25 index (built at startup from all games in SQLite)
@@ -150,8 +151,33 @@ class GameSearchEngine:
             meta = json.loads(meta_path.read_text())
             self.faiss_app_ids = meta["app_ids"]
             self._index_meta = meta  # keep for embed-model cross-check
+
+            # FAISS returns row numbers; app_ids[i] is the only thing that maps
+            # row i back to a game. A length mismatch means every lookup past
+            # the divergence point resolves to the wrong game, with no error
+            # anywhere -- so treat the index as unusable instead of loading it.
+            if self.faiss_index.ntotal != len(self.faiss_app_ids):
+                raise ValueError(
+                    f"index/metadata mismatch: {self.faiss_index.ntotal} vectors "
+                    f"but {len(self.faiss_app_ids)} app_ids"
+                )
+
+            # nomic-embed-text is asymmetric: documents and queries must carry
+            # different task prefixes. Read the prefix back from the index
+            # metadata rather than hard-coding it, so an index built without
+            # prefixes (which reports none) keeps being queried without them.
+            # Prefixing only one side is worse than prefixing neither.
+            self.query_prefix = meta.get("query_prefix", "")
             print(f"FAISS index loaded: {self.faiss_index.ntotal} vectors")
+            if self.query_prefix:
+                print(f"Query prefix: {self.query_prefix!r}")
         except Exception as e:
+            # Reset partial state: faiss_index is assigned before the metadata
+            # is validated, so leaving it set here would keep a half-loaded or
+            # mismatched index in play and defeat the check above.
+            self.faiss_index = None
+            self.faiss_app_ids = []
+            self.query_prefix = ""
             print(f"FAISS load failed: {e}")
 
     def _init_embed_fn(self) -> None:
@@ -540,7 +566,7 @@ class GameSearchEngine:
     def _retrieve_vector_ids(self, query: str, k: int) -> list[str]:
         import faiss
 
-        q_vec = np.array([self.embed_fn(query)], dtype=np.float32)
+        q_vec = np.array([self.embed_fn(self.query_prefix + query)], dtype=np.float32)
         faiss.normalize_L2(q_vec)
 
         n = min(k, self.faiss_index.ntotal)

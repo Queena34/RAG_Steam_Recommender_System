@@ -19,3 +19,8 @@ venv/
 *.tar.gz
 *.sqlite-shm
 *.sqlite-wal
+vector_index_baseline_18k/
+
+# Build artefacts
+build_index.log
+bm25_cache.pkl

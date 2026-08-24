@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -31,6 +32,22 @@ BATCH_SIZE = 100          # rows per SQLite fetch
 EMBED_BATCH = 50          # texts per Ollama embed call
 MAX_REVIEWS_PER_GAME = 20 # max review getted from each game
 EMBED_MODEL = "nomic-embed-text"
+
+# nomic-embed-text is an asymmetric model: it expects a task prefix telling it
+# whether the input is a stored document or a search query. Without them the
+# model cannot tell a long store page apart from a short user query, which
+# costs retrieval quality. The prefixes are written into meta.json so the
+# query side can read back exactly what was used here -- indexing with one
+# prefix and querying with another is worse than using none at all.
+DOC_PREFIX = "search_document: "
+QUERY_PREFIX = "search_query: "
+
+# Minimum positive-review count for a game to be embedded.
+# The reviews-based ranking signal cannot be computed for games whose rating
+# metadata is missing (positive == negative == 0, ~8.4k games), so those are
+# excluded. Games above this threshold are kept even when niche: they are the
+# long tail that a general-purpose LLM cannot recommend from memory.
+MIN_POSITIVE = 10
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +106,7 @@ def build_document(row: sqlite3.Row, reviews: list[str]) -> str:
         snippet = " | ".join(r[:200] for r in reviews[:5])
         parts.append(f"Player reviews: {snippet}")
 
-    return "\n".join(parts)
+    return DOC_PREFIX + "\n".join(parts)
 
 
 def fetch_reviews_for_batch(
@@ -127,20 +144,49 @@ def load_existing_index(
     if index_path.exists() and meta_path.exists():
         index = faiss.read_index(str(index_path))
         meta = json.loads(meta_path.read_text())
+        app_ids = meta["app_ids"]
+
+        # The index stores vectors only; position i means nothing without
+        # app_ids[i]. If the two disagree, every lookup past the divergence
+        # point silently returns the wrong game, so refuse to continue rather
+        # than bake the offset in permanently.
+        if index.ntotal != len(app_ids):
+            sys.exit(
+                f"Index/metadata mismatch: {index.ntotal} vectors but "
+                f"{len(app_ids)} app_ids. A checkpoint was interrupted "
+                f"mid-write. Delete {INDEX_DIR}/ and rebuild."
+            )
+
         print(
             f"Resuming: {index.ntotal} games already indexed "
             f"(model={meta.get('model')})"
         )
-        return index, meta["app_ids"], meta
+        return index, app_ids, meta
     return None, [], {}
 
 
 def save_checkpoint(index: faiss.Index, app_ids: list[str], meta: dict) -> None:
+    """Persist the index and its id mapping, replacing both atomically.
+
+    Each file is written to a temporary path and then moved into place with
+    os.replace(), which is atomic on POSIX. Writing in place instead would
+    leave a truncated file if the process died mid-write, and a truncated
+    meta.json is unrecoverable: FAISS stores only vectors, so the row-to-app_id
+    mapping exists nowhere else.
+
+    Note that atomicity per file still cannot make the pair atomic -- a crash
+    between the two replaces leaves the index one batch ahead of the mapping.
+    load_existing_index() checks for exactly that.
+    """
     INDEX_DIR.mkdir(exist_ok=True)
-    faiss.write_index(index, str(INDEX_DIR / "index.faiss"))
-    (INDEX_DIR / "meta.json").write_text(
-        json.dumps({**meta, "app_ids": app_ids}, ensure_ascii=False)
-    )
+
+    index_tmp = INDEX_DIR / "index.faiss.tmp"
+    faiss.write_index(index, str(index_tmp))
+    os.replace(index_tmp, INDEX_DIR / "index.faiss")
+
+    meta_tmp = INDEX_DIR / "meta.json.tmp"
+    meta_tmp.write_text(json.dumps({**meta, "app_ids": app_ids}, ensure_ascii=False))
+    os.replace(meta_tmp, INDEX_DIR / "meta.json")
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +225,16 @@ def main() -> None:
             "Delete vector_index/ and rebuild."
         )
 
+    # Resuming into an index built with a different document prefix would mix
+    # two incompatible embedding spaces in one file, and nothing downstream
+    # would report an error -- retrieval would just quietly get worse.
+    if existing_index is not None and meta.get("doc_prefix", "") != DOC_PREFIX:
+        sys.exit(
+            f"Index was built with doc_prefix {meta.get('doc_prefix', '')!r} "
+            f"but current setting is {DOC_PREFIX!r}. "
+            "Delete vector_index/ and rebuild."
+        )
+
     # Build or extend FAISS index
     if existing_index is not None:
         index = existing_index
@@ -192,7 +248,8 @@ def main() -> None:
     conn.row_factory = sqlite3.Row
 
     total = conn.execute(
-        "SELECT COUNT(*) FROM games WHERE name IS NOT NULL AND TRIM(name) != '' AND positive > 100"
+        "SELECT COUNT(*) FROM games WHERE name IS NOT NULL AND TRIM(name) != '' AND positive > ?",
+        (MIN_POSITIVE,),
     ).fetchone()[0]
     if args.limit:
         total = min(total, args.limit)
@@ -210,11 +267,11 @@ def main() -> None:
                 SELECT appid, name, short_description, genres_json, tags_json,
                        release_date, positive, negative
                 FROM games
-                WHERE name IS NOT NULL AND TRIM(name) != '' AND positive > 100
+                WHERE name IS NOT NULL AND TRIM(name) != '' AND positive > ?
                 ORDER BY appid
                 LIMIT ? OFFSET ?
                 """,
-                (BATCH_SIZE, offset),
+                (MIN_POSITIVE, BATCH_SIZE, offset),
             ).fetchall()
 
             if not rows:
@@ -257,7 +314,14 @@ def main() -> None:
                     save_checkpoint(
                         index,
                         all_app_ids,
-                        {"model": model_name, "dimension": dim, "source": "ollama"},
+                        {
+                            "model": model_name,
+                            "dimension": dim,
+                            "source": "ollama",
+                            "doc_prefix": DOC_PREFIX,
+                            "query_prefix": QUERY_PREFIX,
+                            "min_positive": MIN_POSITIVE,
+                        },
                     )
 
             pbar.update(len(rows))
