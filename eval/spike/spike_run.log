@@ -1,0 +1,17 @@
+FAISS index loaded: 30693 vectors
+Query prefix: 'search_query: '
+LLM model: phi4-mini:latest
+BM25 index loaded from cache: 39175 games
+Ready: 30693 games FAISS-indexed, embed=ollama:nomic-embed-text, llm=phi4-mini:latest
+
+Model: phi4-mini:latest   queries: 20
+
+Query expanded: something calm to unwind with after a long day serene adventure, indie puzzle games, relaxing puzzles, calming video game, tranquil exploration, soothing soundtrack, meditative gameplay, immersive experience, narrative-driven, story-based, captivating visuals, picturesque landscapes, serene environments, peaceful settings, introspective journey, reflective mood, imaginative world, enchanting atmosphere, gentle
+  [ 1/20]   82.3s  ok   n=5 outside=0 fields=y
+Query expanded: a game that will actually make me laugh out loud comedy game, humorous adventure, laugh-out-loud gameplay, funny characters, slapstick humor, lighthearted comedy, amusing quests, quirky storylines, silly mini-games, playful animations, whimsical world-building, eccentric dialogue, goofy physics, unexpected twists, delightful surprises, charming side-quests, imaginative
+  [ 2/20]  100.8s  ok   n=5 outside=0 fields=y
+Query expanded: something genuinely frightening to play alone at night horror, terrifying, spine-chilling, nightmarish, fear-inducing, creepy, unsettling, jump scare, survival horror, psychological thriller, gothic, dark fantasy, eerie atmospheres, ghostly encounters, sinister ambiance, supernatural elements, haunted settings, macabre themes, isolation, desolation
+  [ 3/20]   89.2s  ok   n=5 outside=0 fields=y
+Query expanded: a game with strong writing and characters worth caring about narrative-driven, compelling characters, immersive storylines, rich lore, character development, engaging dialogue, emotional depth, captivating world-building, strong writing, meaningful choices, interactive storytelling, deep narrative, well-rounded personalities, memorable protagonists, complex antagonists, heartfelt moments, dynamic relationships, evolving plot,
+  [ 4/20]   89.6s  ok   n=5 outside=0 fields=y
+Query expanded: something I can pick up for ten minutes at a time indoor adventure, puzzle-solving, exploration, story-driven, narrative quest, time management, character customization, episodic content, immersive world-building, interactive fiction, choice-based gameplay, solo experience, mystery solving, escape room, detective work, historical setting, non-linear progression, moral choices, branching paths

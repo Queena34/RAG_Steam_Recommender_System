@@ -44,6 +44,40 @@ BM25_MAX_GAMES = 0          # 0 = all games; set to N to limit BM25 corpus size
 BM25_CORPUS_VERSION = 2
 LLM_TIMEOUT = 150           # seconds before giving up on an LLM call
 
+# Ollama constrains decoding to this schema, so malformed output cannot be
+# generated rather than merely being discouraged. The previous implementation
+# asked for a format in prose and recovered it with regular expressions; the
+# three capitalised warnings still in its prompt are evidence that asking did
+# not work.
+RECOMMENDATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "recommendations": {
+            "type": "array",
+            "minItems": DEFAULT_MATCH_COUNT,
+            "maxItems": DEFAULT_MATCH_COUNT,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "app_id": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["app_id", "reason", "evidence"],
+            },
+        }
+    },
+    "required": ["recommendations"],
+}
+
+# How the shortlist was produced. Surfaced in the API response so that a
+# degraded run is visible rather than silent -- the previous fallback path was
+# silent, which is why its parse failures went unnoticed for so long.
+GEN_STRUCTURED = "structured"
+GEN_RETRY = "structured-retry"
+GEN_PARTIAL = "structured-partial"
+GEN_FALLBACK = "fallback-ranking"
+
 
 def create_search_engine() -> "GameSearchEngine":
     return GameSearchEngine(DB_PATH)
@@ -407,27 +441,30 @@ class GameSearchEngine:
         if mode != "keyword-fallback" and self.llm_model:
             mode += "+llm-answer"
 
-        answer, selected_names = self.generate_answer(query, ranked_matches)
+        answer, selected_ids, telemetry = self.generate_answer(query, ranked_matches)
 
-        if selected_names:
-            # Reorder ranked_matches to match LLM selection order.
-            # Use startswith fuzzy match since LLM may truncate long names.
-            name_to_match = {rec.name: (rec, score) for rec, score in ranked_matches}
-            final_matches: list[tuple[GameRecord, float]] = []
-            for sel in selected_names:
-                for name, pair in name_to_match.items():
-                    if name.startswith(sel) or sel.startswith(name):
-                        final_matches.append(pair)
-                        break
-            if not final_matches:
-                final_matches = ranked_matches[:5]
-        else:
-            final_matches = ranked_matches[:5]
+        # Identifiers resolve exactly, so the shortlist is whatever the model
+        # chose, in its order. Anything outside the candidate set was already
+        # discarded in generate_answer(), which is what makes recommending a
+        # game absent from the catalogue impossible rather than unlikely.
+        by_id = {rec.app_id: (rec, score) for rec, score in ranked_matches}
+        final_matches = [by_id[a] for a in selected_ids if a in by_id]
 
-        if len(final_matches) < 5:
-            # LLM did not return enough games — fall back entirely to score-based
-            # ranking and simple answer to keep cards and text consistent
-            final_matches = ranked_matches[:5]
+        if len(final_matches) < DEFAULT_MATCH_COUNT:
+            # Top up from the ranked list rather than returning a short answer.
+            # generation_mode already records that this happened; the previous
+            # implementation did the same thing without saying so.
+            chosen = {a for a in selected_ids}
+            for rec, score in ranked_matches:
+                if len(final_matches) >= DEFAULT_MATCH_COUNT:
+                    break
+                if rec.app_id not in chosen:
+                    final_matches.append((rec, score))
+                    chosen.add(rec.app_id)
+            if selected_ids and telemetry["generation_mode"] == GEN_STRUCTURED:
+                telemetry["generation_mode"] = GEN_PARTIAL
+
+        if not selected_ids:
             answer = self._simple_answer(query, final_matches)
 
         results = [record.to_result(score) for record, score in final_matches]
@@ -442,6 +479,7 @@ class GameSearchEngine:
                 "retrieval_mode": mode,
                 "embed_model": self.embed_model or "none",
                 "llm_model": self.llm_model or "none",
+                **telemetry,
             },
         }
 
@@ -996,70 +1034,179 @@ class GameSearchEngine:
     # Answer generation
     # ------------------------------------------------------------------
 
-    def generate_answer(self, query: str, matches: list[tuple[GameRecord, float]]) -> tuple[str, list[str]]:
+    def generate_answer(
+        self, query: str, matches: list[tuple[GameRecord, float]]
+    ) -> tuple[str, list[str], dict]:
+        """Pick the shortlist and explain it.
+
+        Returns (answer text, ordered app_ids, telemetry). The app_ids are
+        identifiers taken straight from the model's structured output and
+        checked against the candidate set, replacing the previous scheme of
+        parsing titles out of prose and matching them back by prefix. A title
+        has unbounded variants -- truncation, casing, subtitles, sequels -- so
+        matching it can only ever reduce the failure rate; set membership of an
+        identifier is decidable.
+        """
+        telemetry = {
+            "generation_mode": GEN_FALLBACK,
+            "rejected_app_ids": 0,
+            "retries": 0,
+            "evidence_supported": None,
+        }
         if not matches:
-            return "No games found matching your description.", []
+            return "No games found matching your description.", [], telemetry
 
         if self.llm_model:
             try:
                 return self._call_with_timeout(
-                    self._generate_with_llm, LLM_TIMEOUT, query, matches
+                    self._generate_structured, LLM_TIMEOUT, query, matches
                 )
             except Exception as e:
                 print(f"LLM answer failed/timed out: {e}")
 
-        return self._simple_answer(query, matches), []
+        return self._simple_answer(query, matches), [], telemetry
 
-    def _generate_with_llm(
+    def _generate_structured(
         self, query: str, matches: list[tuple[GameRecord, float]]
-    ) -> str:
+    ) -> tuple[str, list[str], dict]:
+        records = [rec for rec, _ in matches]
+        by_id = {rec.app_id: rec for rec in records}
+        prompt = self._build_recommendation_prompt(query, records)
+
+        telemetry = {
+            "generation_mode": GEN_STRUCTURED,
+            "rejected_app_ids": 0,
+            "retries": 0,
+            "evidence_supported": None,
+        }
+
+        data = self._call_schema(prompt, temperature=0.3)
+        if data is None:
+            # One retry at a lower temperature: schema-constrained decoding
+            # still leaves the model free to produce semantically empty output,
+            # and a single retry is cheap next to a degraded answer.
+            telemetry["retries"] = 1
+            data = self._call_schema(prompt, temperature=0.0)
+            if data is not None:
+                telemetry["generation_mode"] = GEN_RETRY
+
+        if data is None:
+            telemetry["generation_mode"] = GEN_FALLBACK
+            return self._simple_answer(query, matches), [], telemetry
+
+        raw_items = data.get("recommendations") or []
+        kept: list[dict] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                telemetry["rejected_app_ids"] += 1
+                continue
+            app_id = str(item.get("app_id", "")).strip()
+            if app_id in by_id and app_id not in {k["app_id"] for k in kept}:
+                kept.append({**item, "app_id": app_id})
+            else:
+                telemetry["rejected_app_ids"] += 1
+
+        if telemetry["rejected_app_ids"]:
+            print(f"[warn] discarded {telemetry['rejected_app_ids']} app_id(s) "
+                  f"outside the candidate set")
+
+        if not kept:
+            telemetry["generation_mode"] = GEN_FALLBACK
+            return self._simple_answer(query, matches), [], telemetry
+
+        telemetry["evidence_supported"] = self._evidence_support(kept, by_id)
+
+        if len(kept) < DEFAULT_MATCH_COUNT:
+            telemetry["generation_mode"] = GEN_PARTIAL
+
+        answer = self._compose_answer(kept, by_id)
+        return answer, [item["app_id"] for item in kept], telemetry
+
+    def _call_schema(self, prompt: str, temperature: float) -> dict | None:
+        """One schema-constrained generation; None if the result is unusable."""
         import ollama
 
-        # Keep prompt short: fewer input tokens = faster prefill on CPU
+        try:
+            resp = ollama.generate(
+                model=self.llm_model,
+                prompt=prompt,
+                format=RECOMMENDATION_SCHEMA,
+                options={"temperature": temperature, "num_predict": 900},
+            )
+            data = json.loads(resp.response)
+        except Exception as e:
+            print(f"Structured generation failed: {e}")
+            return None
+        return data if isinstance(data, dict) else None
+
+    @staticmethod
+    def _build_recommendation_prompt(query: str, records: list[GameRecord]) -> str:
+        """Candidates keyed by app_id, so the model answers with identifiers.
+
+        Deliberately short. Prompt prefill dominates latency on CPU, and the
+        schema now enforces the output shape that the previous prompt had to
+        spell out in three capitalised sentences.
+        """
         lines = []
-        for i, (rec, _) in enumerate(matches, 1):
-            tags = ", ".join(rec._normalize_tags(rec.raw.get("tags"))[:4])
-            desc = rec.short_description[:100]
-            lines.append(f"{i}. {rec.name} [{tags}] — {desc}")
-
-        prompt = (
-            'IMPORTANT: You MUST only recommend games from the candidate list '
-            'provided below. Do NOT recommend any games from your own knowledge '
-            'that are not in this list. Do NOT invent or hallucinate game titles. '
-            'Only use the exact game names as they appear in the list below.\n\n'
-            f'A user is looking for Steam games matching: "{query}"\n\n'
-            f'Here are 10 candidate games:\n'
+        for rec in records:
+            tags = ", ".join(rec._normalize_tags(rec.raw.get("tags"))[:5])
+            pos = rec.raw.get("positive") or 0
+            neg = rec.raw.get("negative") or 0
+            rating = f"{round(100 * pos / (pos + neg))}% positive" if pos + neg else "unrated"
+            lines.append(
+                f"{rec.app_id}: {rec.name} [{tags}] ({rating}) "
+                f"{rec.short_description[:120]}"
+            )
+        return (
+            f'A player asks for: "{query}"\n\n'
+            f"Candidate games, one per line as app_id: name [tags] (rating) description\n\n"
             + "\n".join(lines)
-            + '\n\nYou MUST select exactly 5 games, no more and no less. '
-            'Even if some candidates are not a perfect fit, still include them '
-            'and briefly explain what partial value they offer. '
-            'Never recommend fewer than 5 games under any circumstances. '
-            'For each selected game, write 1-2 sentences explaining specifically '
-            'why it fits the request. Enthusiastic tone, plain text, no bullet points, '
-            'present them in order from best to worst match. '
-            'Format each recommendation exactly as: '
-            '1. Game Name [tags] — explanation sentence. '
-            'Use this numbered format strictly.'
+            + f"\n\nPick the {DEFAULT_MATCH_COUNT} best matches. For each, give the "
+            f"app_id exactly as listed, a reason it fits this request, and the "
+            f"evidence you used -- a tag, the rating, or wording from the description."
         )
 
-        resp = ollama.generate(
-            model=self.llm_model,
-            prompt=prompt,
-            options={"temperature": 0.7, "num_predict": 800},
-        )
-        response = resp.response.strip()
-        patterns = [
-            r'^\d+\.\s+([^[\n\-–]+)',   # "1. Game Name [" or "1. Game Name -"
-            r'^([^[\n\-–]+)\s*[\-–]',   # "Game Name -" or "Game Name –"
-            r'^([^[\n]+)\[',             # "Game Name ["
-        ]
-        selected_names = []
-        for pattern in patterns:
-            matches = re.findall(pattern, response, re.MULTILINE)
-            if matches:
-                selected_names = [m.strip() for m in matches[:5]]
-                break
-        return response, selected_names
+    @staticmethod
+    def _compose_answer(items: list[dict], by_id: dict[str, GameRecord]) -> str:
+        """Assemble prose from the structured fields.
+
+        The API contract keeps a single `answer` string, so the text is built
+        from the model's own reason wording rather than generated separately.
+        """
+        parts = []
+        for i, item in enumerate(items, 1):
+            rec = by_id[item["app_id"]]
+            reason = str(item.get("reason", "")).strip()
+            parts.append(f"{i}. {rec.name} — {reason}")
+        return "\n".join(parts)
+
+    @staticmethod
+    def _evidence_support(items: list[dict], by_id: dict[str, GameRecord]) -> float:
+        """Share of citations whose wording overlaps the record they cite.
+
+        A loose token-overlap check, reported rather than enforced. Evidence is
+        the model's paraphrase, so a literal test would reject far too much, and
+        rejecting entries would starve the shortlist and trigger the fallback.
+        What the report needs from this is a number, not a stricter filter.
+        """
+        supported = 0
+        for item in items:
+            rec = by_id[item["app_id"]]
+            haystack = " ".join([
+                rec.name,
+                rec.short_description,
+                " ".join(rec._normalize_tags(rec.raw.get("tags"))),
+                " ".join(rec.raw.get("genres") or []),
+                str(rec.raw.get("review_summary") or ""),
+                f"{rec.raw.get('positive') or 0} positive",
+            ]).lower()
+            tokens = {
+                t for t in re.split(r"\W+", str(item.get("evidence", "")).lower())
+                if len(t) > 3
+            }
+            if tokens and sum(1 for t in tokens if t in haystack) / len(tokens) >= 0.5:
+                supported += 1
+        return supported / len(items) if items else 0.0
 
     def _simple_answer(self, query: str, matches: list[tuple[GameRecord, float]]) -> str:
         names = ", ".join(f'"{r.name}"' for r, _ in matches[:3])
