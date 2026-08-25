@@ -36,6 +36,12 @@ MAX_PER_DEVELOPER = 2
 MAX_PER_TAG = 3
 MAX_FALLBACK_GAMES = 5000   # games loaded for SQLite-LIKE keyword-search fallback
 BM25_MAX_GAMES = 0          # 0 = all games; set to N to limit BM25 corpus size
+
+# Bump whenever the BM25 corpus construction changes. The cache stores this
+# alongside the index; a mismatch forces a rebuild. Without it, changing what
+# goes into the corpus would leave the stale cache in place -- the change
+# simply would not take effect, and nothing would say so.
+BM25_CORPUS_VERSION = 2
 LLM_TIMEOUT = 150           # seconds before giving up on an LLM call
 
 
@@ -265,14 +271,30 @@ class GameSearchEngine:
                     return [t for t in re.split(r"\W+", text.lower()) if len(t) > 1]
             self._bm25_tokenize = tokenize
 
+            import build_index as B  # same review sampling rules as the vector index
+
+            signature = {
+                "corpus_version": BM25_CORPUS_VERSION,
+                "doc_positive_reviews": B.DOC_POSITIVE_REVIEWS,
+                "doc_negative_reviews": B.DOC_NEGATIVE_REVIEWS,
+                "doc_positive_chars": B.DOC_POSITIVE_CHARS,
+                "doc_negative_chars": B.DOC_NEGATIVE_CHARS,
+                "max_games": BM25_MAX_GAMES,
+            }
+
             cache_path = BASE_DIR / "bm25_cache.pkl"
             if cache_path.exists():
                 try:
                     import pickle
                     with open(cache_path, "rb") as f:
-                        self._bm25, self._bm25_app_ids = pickle.load(f)
-                    print(f"BM25 index loaded from cache: {len(self._bm25_app_ids)} games")
-                    return
+                        cached = pickle.load(f)
+                    if not isinstance(cached, dict) or cached.get("signature") != signature:
+                        print("BM25 cache was built from a different corpus, rebuilding...")
+                    else:
+                        self._bm25 = cached["bm25"]
+                        self._bm25_app_ids = cached["app_ids"]
+                        print(f"BM25 index loaded from cache: {len(self._bm25_app_ids)} games")
+                        return
                 except Exception as e:
                     print(f"BM25 cache load failed ({e}), rebuilding...")
 
@@ -288,6 +310,17 @@ class GameSearchEngine:
                     {limit_clause}
                     """
                 ).fetchall()
+
+            # Reviews are fetched in batches through the same helper the vector
+            # index uses, so both corpora contain exactly the same review text.
+            # Deriving them separately is how the two drifted apart in the first
+            # place: the vector documents carried reviews and BM25 did not, so
+            # experience-style queries could never match lexically at all.
+            reviews_by_app: dict[int, tuple[list[str], list[str]]] = {}
+            with sqlite3.connect(self.db_path) as conn:
+                for start in range(0, len(rows), 500):
+                    batch = [r["appid"] for r in rows[start:start + 500]]
+                    reviews_by_app.update(B.fetch_reviews_for_batch(conn, batch))
 
             app_ids: list[str] = []
             corpus: list[list[str]] = []
@@ -316,6 +349,15 @@ class GameSearchEngine:
                 except Exception:
                     pass
 
+                # Reviews, truncated exactly as build_document() truncates them.
+                pos, neg = reviews_by_app.get(row["appid"], ([], []))
+                text_parts.extend(
+                    r[:B.DOC_POSITIVE_CHARS] for r in pos[:B.DOC_POSITIVE_REVIEWS]
+                )
+                text_parts.extend(
+                    r[:B.DOC_NEGATIVE_CHARS] for r in neg[:B.DOC_NEGATIVE_REVIEWS]
+                )
+
                 tokens = tokenize(" ".join(text_parts))
                 app_ids.append(str(row["appid"]))
                 corpus.append(tokens)
@@ -327,7 +369,10 @@ class GameSearchEngine:
             try:
                 import pickle
                 with open(cache_path, "wb") as f:
-                    pickle.dump((self._bm25, self._bm25_app_ids), f)
+                    pickle.dump(
+                        {"signature": signature, "bm25": self._bm25, "app_ids": app_ids},
+                        f,
+                    )
                 print(f"BM25 cache saved to {cache_path}")
             except Exception as e:
                 print(f"BM25 cache save failed: {e}")
