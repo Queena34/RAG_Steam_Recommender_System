@@ -4,7 +4,7 @@
 |---|---|
 | **编号** | PRD-001 |
 | **版本** | v1.0 |
-| **状态** | 实施中 |
+| **状态** | 已完成 |
 | **创建日期** | 2026-08-24 |
 | **关联提交** | `6c62987`（代码部分已提交），索引产出待生成 |
 | **影响面** | 向量索引全量重建 · 约 10 小时 · 历史检索数字全部失效 |
@@ -177,16 +177,16 @@ Criticism: <3 条，各 150 字符>
 
 重建完成后，以下全部通过方可视为完成：
 
-- [ ] **A1** `index.faiss` 的 `ntotal` == `meta.json` 中 `app_ids` 长度
-- [ ] **A2** `ntotal` == 30,693
-- [ ] **A3** `meta.json` 含 `doc_prefix` = `"search_document: "`、`query_prefix` = `"search_query: "`、`min_positive` = 10
-- [ ] **A4** 抽样 20 个文档，全部以 `search_document: ` 开头
-- [ ] **A5** 抽样 100 个文档，含 `Modes:` 行的比例 > 95%
-- [ ] **A6** 抽样 100 个文档，含 `Criticism:` 行的比例 > 85%
-- [ ] **A7** `GameSearchEngine` 能成功加载新索引，且启动日志打印 `Query prefix: 'search_query: '`
-- [ ] **A8** 单元测试 `test_ranking.py` 32/32、`test_preferences.py` 15/15 通过
-- [ ] **A9** `vector_index_baseline_18k/` 完好，md5 与重建前一致
-- [ ] **A10** 冒烟查询：`"relaxing farming game"` 返回 5 条结果且无异常
+- [x] **A1** `index.faiss` 的 `ntotal` == `meta.json` 中 `app_ids` 长度 — 30693 == 30693
+- [x] **A2** `ntotal` == 30,693 — 30,693
+- [x] **A3** `meta.json` 含 `doc_prefix` = `"search_document: "`、`query_prefix` = `"search_query: "`、`min_positive` = 10 — 三字段齐全
+- [x] **A4** 抽样 20 个文档，全部以 `search_document: ` 开头 — 100/100
+- [x] **A5** 抽样 100 个文档，含 `Modes:` 行的比例 > 95% — 100/100 = 100%
+- [x] **A6** 抽样 100 个文档，含 `Criticism:` 行的比例 > 85% — 96/100 = 96%
+- [x] **A7** `GameSearchEngine` 能成功加载新索引，且启动日志打印 `Query prefix: 'search_query: '` — 加载成功，打印 `Query prefix: 'search_query: '`
+- [x] **A8** 单元测试 `test_ranking.py` 32/32、`test_preferences.py` 15/15 通过 — 32/32 + 15/15
+- [x] **A9** `vector_index_baseline_18k/` 完好，md5 与重建前一致 — 18,449 条，md5 一致
+- [x] **A10** 冒烟查询：`"relaxing farming game"` 返回 5 条结果且无异常 — 返回 5 条，均为种田类
 
 ---
 
@@ -235,6 +235,7 @@ cp -R vector_index_baseline_18k vector_index
 |---|---|---|---|
 | v1.0 | 2026-08-24 | 待确认 | 初稿。合并四项需重建的变更为一次执行 |
 | v1.1 | 2026-08-24 | 实施中 | 方案获确认，启动重建 |
+| v1.2 | 2026-08-25 | 已完成 | 重建完成，A1–A10 全部通过 |
 
 ### 执行日志
 
@@ -245,3 +246,5 @@ cp -R vector_index_baseline_18k vector_index
 | 2026-08-24 早些 | 备份旧索引至 `vector_index_baseline_18k/`（md5 校验一致，18,449 条） |
 | 2026-08-24 早些 | 代码变更提交 `6c62987`；`--limit 100` 端到端冒烟通过 |
 | 2026-08-24 18:44 | **启动全量重建**，目标 30,693 条，预计约 10.1 小时 |
+| 2026-08-25 02:43 | 重建完成：30,693 条，0 错误，实际耗时 7h58m（快于预估的 10.1h） |
+| 2026-08-25 10:00 | A1–A10 全部通过，状态转为已完成 |
