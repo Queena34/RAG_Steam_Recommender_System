@@ -1,0 +1,41 @@
+{
+  "_source": "Course report Table 14. Recorded outputs from the original single-pass judging run.",
+  "_note": "Original scores are kept for reference only. They came from one scoring pass and are not comparable with a multi-pass mean, so both systems are re-scored under the revised protocol.",
+  "rounds": [
+    {
+      "round": 1,
+      "category": "Simple / Vague",
+      "query": "Recommend some relaxing games",
+      "original_system": {"titles": ["Unpacking", "Dorfromantik", "Virtual Cottage", "Hello Kitty Island Adventure", "SUMMERHOUSE"], "original_score": 88},
+      "chatgpt": {"titles": ["Stardew Valley", "Dorfromantik", "Unpacking", "A Short Hike", "Tiny Glade"], "original_score": 97}
+    },
+    {
+      "round": 2,
+      "category": "Detailed Descriptive",
+      "query": "I want games that are intellectually stimulating and require some gaming experience",
+      "original_system": {"titles": ["Chants of Sennaar", "Storyteller", "SteamWorld Dig", "Minds Beneath Us", "Fantasy Map Simulator"], "original_score": 50},
+      "chatgpt": {"titles": ["Outer Wilds", "Return of the Obra Dinn", "The Witness", "Slay the Spire", "EXAPUNKS"], "original_score": 99}
+    },
+    {
+      "round": 3,
+      "category": "Negation-Constrained",
+      "query": "I don't want cozy or cute games - give me some combat games to play with friends",
+      "original_system": {"titles": ["ShellShock Live", "CRSED: Cuisine Royale", "Super Animal Royale", "Bopl Battle", "We Who Are About To Die"], "original_score": 61},
+      "chatgpt": {"titles": ["Helldivers 2", "Deep Rock Galactic", "Warhammer 40,000: Darktide", "GTFO", "Remnant II"], "original_score": 99}
+    },
+    {
+      "round": 4,
+      "category": "Hard-Constrained",
+      "query": "Free co-op multiplayer games",
+      "original_system": {"titles": ["Sven Co-op", "PICO PARK:Classic Edition", "Operation: Tango - Friend Pass", "Wolvesville", "Sonder"], "original_score": 50},
+      "chatgpt": {"titles": ["Warframe", "Path of Exile", "We Were Here", "Unturned", "SCP: Secret Laboratory"], "original_score": 90}
+    },
+    {
+      "round": 5,
+      "category": "Analogy",
+      "query": "Like Stardew Valley but more challenging",
+      "original_system": {"titles": ["Diablo® IV", "TUNIC", "ICARUS", "Life is Feudal", "A Difficult Game About Climbing"], "original_score": 52},
+      "chatgpt": {"titles": ["Graveyard Keeper", "Kynseed", "Rune Factory 4 Special", "Core Keeper", "Atomicrops"], "original_score": 92}
+    }
+  ]
+}

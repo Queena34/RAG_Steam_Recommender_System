@@ -1,0 +1,11 @@
+FAISS index loaded: 30693 vectors
+Query prefix: 'search_query: '
+LLM model: phi4-mini:latest
+BM25 index loaded from cache: 39175 games
+Ready: 30693 games FAISS-indexed, embed=ollama:nomic-embed-text, llm=phi4-mini:latest
+
+Rounds: 5   runs each: 3
+
+Query expanded: Recommend some relaxing games indoor adventure, puzzle-solving, exploration, story-driven, relaxing gameplay, charming world, solo play, immersive experience, captivating visuals, tranquil environment, narrative journey, soothing soundtrack, meditative activities, calming atmosphere, peaceful setting, serene landscapes, gentle challenges, thoughtful design, engaging puzzles, interactive storytelling
+  R1 run 1   165.3s  structured           Monument Valley, Ouros, Aery - Calm Mind
+Query expanded: Recommend some relaxing games indoor adventure, puzzle-solving, exploration, story-driven, relaxing gameplay, charming world, serene atmosphere, indie game, captivating visuals, soothing soundtrack, narrative-focused, tranquil experience, immersive environment, creative puzzles, engaging storyline, peaceful setting, whimsical characters, calming activities, meditative journey, gentle challenges
