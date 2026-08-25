@@ -67,6 +67,35 @@ def retrieve_rrf(engine, query: str) -> list[str]:
     return [app_id for app_id, _ in engine._rrf_fuse(lists)][:CUT]
 
 
+def _hydrate(engine, app_ids: list[str]):
+    """Fetch records for a fused candidate list and attach their fusion score."""
+    records_map = engine._fetch_game_details(app_ids)
+    fused = dict(engine._rrf_fuse([app_ids]))
+    ordered = []
+    for app_id in app_ids:
+        rec = records_map.get(app_id)
+        if rec is not None:
+            rec.raw["_rrf"] = fused.get(app_id, 0.0)
+            ordered.append(rec)
+    engine._assign_retrieval_scores(ordered)
+    return ordered
+
+
+def retrieve_quality(engine, query: str) -> list[str]:
+    """Fusion plus review-aware quality scoring, without the diversity pass.
+
+    Sits between rrf and full so that the quality blend (C5) and the diversity
+    constraint with the preference bonus (C6) can be attributed separately;
+    measured together they cannot be told apart.
+    """
+    app_ids = retrieve_rrf(engine, query)
+    if not app_ids:
+        return []
+    ordered = _hydrate(engine, app_ids)
+    ordered.sort(key=lambda r: r.raw.get("_score", 0.0), reverse=True)
+    return [r.app_id for r in ordered]
+
+
 def retrieve_full(engine, query: str) -> list[str]:
     """Fusion, then the production scoring and diversity pass.
 
@@ -78,16 +107,7 @@ def retrieve_full(engine, query: str) -> list[str]:
     if not app_ids:
         return []
 
-    records_map = engine._fetch_game_details(app_ids)
-    fused = dict(engine._rrf_fuse([app_ids]))
-    ordered = []
-    for app_id in app_ids:
-        rec = records_map.get(app_id)
-        if rec is not None:
-            rec.raw["_rrf"] = fused.get(app_id, 0.0)
-            ordered.append(rec)
-
-    engine._assign_retrieval_scores(ordered)
+    ordered = _hydrate(engine, app_ids)
     ranked = engine.rank_candidates(query, ordered)
     ranked_ids = [rec.app_id for rec, _ in ranked]
 
@@ -101,6 +121,7 @@ CONFIGS = {
     "bm25": retrieve_bm25,
     "vector": retrieve_vector,
     "rrf": retrieve_rrf,
+    "quality": retrieve_quality,
     "full": retrieve_full,
 }
 
@@ -136,7 +157,7 @@ def evaluate(
     afterwards without paying for another run.
     """
     per_query: dict[str, list[float]] = {
-        "Recall@50": [], "nDCG@10": [], "MRR": [], "P@5": [],
+        "Recall@50": [], "nDCG@10": [], "MRR": [], "P@5": [], "ILD@5": [],
     }
     details: list[dict] = []
     started = time.perf_counter()
@@ -148,11 +169,24 @@ def evaluate(
             print(f"  ! query {record.get('query_id')} failed: {exc}")
             retrieved = []
 
+        # Intra-list diversity over the shortlist actually shown to a user.
+        # Relevance metrics cannot tell a good shortlist from five entries of
+        # the same series, so the diversity constraint needs its own measure.
+        top5 = M.dedupe(retrieved)[:5]
+        tag_sets = []
+        if top5:
+            records = engine._fetch_game_details(top5)
+            tag_sets = [
+                rec._normalize_tags(rec.raw.get("tags"))
+                for rec in (records.get(a) for a in top5) if rec is not None
+            ]
+
         scores = {
             "Recall@50": M.recall_at_k(retrieved, relevant, 50),
             "nDCG@10": M.ndcg_at_k(retrieved, grades, 10),
             "MRR": M.reciprocal_rank(retrieved, relevant),
             "P@5": M.precision_at_k(retrieved, relevant, 5),
+            "ILD@5": M.intra_list_diversity(tag_sets),
         }
         for name, value in scores.items():
             per_query[name].append(value)
@@ -212,7 +246,7 @@ def main() -> None:
         for metric, (mean, se) in stats.items():
             print(f"    {metric:10s} {mean:.3f} ± {se:.3f}")
 
-    table = M.to_markdown(rows, ["Recall@50", "nDCG@10", "MRR", "P@5"])
+    table = M.to_markdown(rows, ["Recall@50", "nDCG@10", "MRR", "P@5", "ILD@5"])
     print("\n" + table)
 
     RESULTS_DIR.mkdir(exist_ok=True)
