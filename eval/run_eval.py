@@ -126,10 +126,19 @@ def judgements(record: dict) -> tuple[set[str], dict[str, float]]:
     return set(grades), grades
 
 
-def evaluate(engine, queries: list[dict], retrieve, verbose: bool) -> dict[str, list[float]]:
+def evaluate(
+    engine, queries: list[dict], retrieve, verbose: bool
+) -> tuple[dict[str, list[float]], list[dict]]:
+    """Return aggregate metric lists plus one record per query.
+
+    Per-query records are kept so that subset analyses -- for instance,
+    restricting to queries whose answer exists in both indexes -- can be done
+    afterwards without paying for another run.
+    """
     per_query: dict[str, list[float]] = {
         "Recall@50": [], "nDCG@10": [], "MRR": [], "P@5": [],
     }
+    details: list[dict] = []
     started = time.perf_counter()
     for i, record in enumerate(queries, 1):
         relevant, grades = judgements(record)
@@ -139,15 +148,25 @@ def evaluate(engine, queries: list[dict], retrieve, verbose: bool) -> dict[str, 
             print(f"  ! query {record.get('query_id')} failed: {exc}")
             retrieved = []
 
-        per_query["Recall@50"].append(M.recall_at_k(retrieved, relevant, 50))
-        per_query["nDCG@10"].append(M.ndcg_at_k(retrieved, grades, 10))
-        per_query["MRR"].append(M.reciprocal_rank(retrieved, relevant))
-        per_query["P@5"].append(M.precision_at_k(retrieved, relevant, 5))
+        scores = {
+            "Recall@50": M.recall_at_k(retrieved, relevant, 50),
+            "nDCG@10": M.ndcg_at_k(retrieved, grades, 10),
+            "MRR": M.reciprocal_rank(retrieved, relevant),
+            "P@5": M.precision_at_k(retrieved, relevant, 5),
+        }
+        for name, value in scores.items():
+            per_query[name].append(value)
+        details.append({
+            "query_id": record.get("query_id"),
+            "gold_appid": record.get("gold_appid"),
+            "n_retrieved": len(retrieved),
+            **scores,
+        })
 
         if verbose and i % 50 == 0:
             rate = i / (time.perf_counter() - started)
             print(f"  {i}/{len(queries)}  ({rate:.1f} q/s)")
-    return per_query
+    return per_query, details
 
 
 def main() -> None:
@@ -181,8 +200,13 @@ def main() -> None:
         label = f"{name}{(' ' + args.label) if args.label else ''}"
         print(f"\n--- {label} ---")
         started = time.perf_counter()
-        per_query = evaluate(engine, queries, CONFIGS[name], not args.quiet)
+        per_query, details = evaluate(engine, queries, CONFIGS[name], not args.quiet)
         stats = M.summarise(per_query)
+        RESULTS_DIR.mkdir(exist_ok=True)
+        detail_path = RESULTS_DIR / f"perquery_{name}{('_' + args.label.strip('() ').replace(' ', '_')) if args.label else ''}.jsonl"
+        detail_path.write_text(
+            "\n".join(json.dumps(d, ensure_ascii=False) for d in details) + "\n"
+        )
         rows.append((label, stats))
         print(f"  done in {time.perf_counter() - started:.0f}s")
         for metric, (mean, se) in stats.items():
