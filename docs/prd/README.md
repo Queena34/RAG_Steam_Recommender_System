@@ -79,7 +79,7 @@ PRD-000 总体方案              执行台账：做哪些、现在到哪了
 | [PRD-003](PRD-003-bm25-corpus-parity.md) | BM25 语料对齐：纳入评论文本 | 已完成 | 2026-08-24 | `122c4cd` |
 | [PRD-004](PRD-004-structured-generation.md) | 结构化生成与标识符校验 | 已完成 | 2026-08-25 | `8fc54c2` |
 | [PRD-005](PRD-005-judge-protocol-rerun.md) | LLM-as-judge 协议修订与重跑 | 已完成 | 2026-08-25 | `565484d` |
-| [PRD-006](PRD-006-quality-weight-recalibration.md) | 质量权重重新标定 | 待确认 | 2026-08-25 | — |
+| [PRD-006](PRD-006-quality-weight-recalibration.md) | 质量权重重新标定 | 实施中 | 2026-08-25 | — |
 
 ### 早于本流程的变更
 

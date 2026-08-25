@@ -23,8 +23,29 @@ RETRIEVAL_POOL = 100        # candidates each retriever contributes to the fusio
 RRF_K = 60                  # Reciprocal Rank Fusion smoothing constant
 
 # Blend of "how well does it match the query" vs "is it a good game".
-RELEVANCE_WEIGHT = 0.75
-QUALITY_WEIGHT = 0.25
+#
+# Calibrated by eval/sweep_quality_weight.py over 50 topical queries, after the
+# judge run put this system 8 points below its predecessor while recommending
+# titles with a median of 468 positive reviews against 8,935.
+#
+#   weight  nDCG@10  P@5    median reviews in top 5
+#   0.25     0.429   0.480      267      <- previous setting
+#   0.40     0.449   0.492      630
+#   0.50     0.459   0.508      911
+#   0.60     0.460   0.536    1,950      <- nDCG peak, chosen
+#   0.75     0.458   0.560    4,620      <- nDCG past peak
+#
+# There is no trade-off here, which is why 0.25 was wrong rather than merely
+# conservative: raising the weight improved relevance and review quality
+# together. The earlier reasoning assumed a higher weight would promote
+# unrelated titles, but this score only orders candidates fusion already
+# selected, all of which are relevant -- it prefers better-reviewed results
+# among them rather than introducing worse-matching ones.
+#
+# 0.75 is not taken: nDCG has already turned down by then, so going further
+# buys review counts with ranking quality.
+RELEVANCE_WEIGHT = 0.40
+QUALITY_WEIGHT = 0.60
 
 # Review-aware quality scoring
 WILSON_Z = 1.96             # 95% confidence for the Wilson lower bound
