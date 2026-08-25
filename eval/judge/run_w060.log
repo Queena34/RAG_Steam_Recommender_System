@@ -1,0 +1,49 @@
+FAISS index loaded: 30693 vectors
+Query prefix: 'search_query: '
+LLM model: phi4-mini:latest
+BM25 index loaded from cache: 39175 games
+Ready: 30693 games FAISS-indexed, embed=ollama:nomic-embed-text, llm=phi4-mini:latest
+
+Rounds: 5   runs each: 3
+
+Query expanded: Recommend some relaxing games indoor adventure, puzzle-solving, exploration, story-driven, narrative quests, charming world-building, solo play, immersive environments, tranquil settings, captivating stories
+  R1 run 1   211.8s  structured           Luma Island, Monument Valley, Cloudy Valley
+Query expanded: Recommend some relaxing games indoor adventure, puzzle-solving, story-driven narrative, exploration, charming characters, serene environments, immersive world-building, captivating soundtrack, relaxing gameplay, soothing visuals, engaging storyline, tranquil atmosphere, meditative experience, peaceful journey, calming escape, thoughtful design, introspective moments, mindful progression, reflective pacing
+  R1 run 2   248.6s  structured           Monument Valley, DeepStates [VR], Fireside
+Query expanded: Recommend some relaxing games indoor adventure, puzzle-solving, exploration, story-driven, charming characters, serene environments, relaxing gameplay, immersive world-building, captivating narratives, soothing music, tranquil settings, meditative experience, calming visuals, peaceful ambiance, gentle challenges, engaging puzzles, thoughtful design, leisurely pace, enchanting atmosphere, mesmerizing
+  R1 run 3   308.8s  structured           Monument Valley, Onde, Fireside
+Query expanded: I want games that are intellectually stimulating and require some gaming experience puzzle-solving, strategy games, brain teasers, educational entertainment, mystery solving, narrative-driven gameplay, immersive storylines, complex puzzles, intellectual challenges, world-building, exploration, discovery, character development, skill-based progression, learning through play, thematic depth, rich lore, intricate systems, thought-provoking
+  R2 run 1   199.8s  structured           Riven, Planetiles, Zenge
+Query expanded: I want games that are intellectually stimulating and require some gaming experience puzzle-solving, strategy games, brain teasers, educational video game, indie puzzle games, mind-bending puzzles, logic challenges, cerebral adventures, escape room simulations, mystery solving, detective work, historical mysteries, cryptic clues, ancient civilizations, secret codes, treasure hunting, hidden messages, enigmatic
+  R2 run 2   192.6s  structured           Doors: Paradox, Havsala: Into the Soul Palace, The Room VR: A Dark Matter
+Query expanded: I want games that are intellectually stimulating and require some gaming experience strategy puzzle educational brain training logic game adventure challenge problem-solving skill-building trivia quiz board games learning simulator
+
+Strategy Puzzle Game Adventure Challenge Brain Training Logic Educational Trivia Quiz Board Games Learning Simulator Strategy Puzzles Problem-Solving Skills Brain Teasers Logical Challenges Mind-Bending Adventures Educational Quizzes Skill Development Simulations Brain
+[warn] discarded 1 app_id(s) outside the candidate set
+  R2 run 3   197.5s  structured-partial   Everyday Genius: SquareLogic, LYNE, 3D Math - Ultra
+Query expanded: I don't want cozy or cute games - give me some combat games to play with friends combat games, multiplayer action, online battle arena, first-person shooter, real-time strategy, team-based shooters, competitive gaming, PvP battles, co-op missions, tactical combat, FPS genre, MMO warfare, guild wars, clan conflicts, leaderboard challenges, ranked matches, skill tournaments, high-stakes
+  R3 run 1   177.3s  structured           Tom Clancy's Rainbow Six Siege, Splitgate, OPG: Clan Wars
+Query expanded: I don't want cozy or cute games - give me some combat games to play with friends combat action multiplayer cooperative survival shooter battle royale fighting FPS tactical warfare MMORPG PvP fantasy RPG warzone tower defense turn-based strategy combat questing adventure beat 'em up fighting melee brawler arcade platformer fighting game roleplay heist stealth hack and slash puzzle escape room zombie apocalypse post-apocalyptic sci-fi space
+  R3 run 2   178.9s  structured           Super Animal Royale, FOR HONOR™, OPG: Clan Wars
+Query expanded: I don't want cozy or cute games - give me some combat games to play with friends combat, multiplayer, action-adventure, PvP (Player vs Player), battle royale, cooperative gameplay, competitive gaming, team-based shooter, online battles, real-time strategy, tactical combat, first-person shooter, third-person shooter, melee fighting, ranged weapons, skill challenges, leaderboard rankings, high score
+  R3 run 3   188.5s  structured           Super Animal Royale, Skillshot City, Friends vs Friends
+Query expanded: Free co-op multiplayer games co-op multiplayer games, cooperative gameplay, online friends mode, shared experiences, team-based gaming, local split screen co-op, couch co-op setup, simultaneous play, joint adventures, group activities, interactive storytelling, collaborative challenges, social interaction, virtual teamwork, immersive collaboration, engaging partnerships, dynamic alliances,
+  R4 run 1   152.8s  structured           Sonder, DYO, Eon Altar
+Query expanded: Free co-op multiplayer games co-op multiplayer games, cooperative gameplay, shared experiences, online friends play, team-based gaming, local co-op mode, split-screen adventure, couch co-op, party game, group activities, interactive story, character collaboration, joint missions, virtual teamwork, collective objectives, synchronized challenges, ensemble quests, unified
+  R4 run 2   167.4s  structured           Sonder, DYO, Eon Altar
+Query expanded: Free co-op multiplayer games co-op multiplayer games, cooperative gameplay, online friends play together, shared experiences gaming, team-based activities, local co-op mode, split-screen cooperatives, couch co-op adventures, simultaneous action, joint missions, collaborative challenges, interactive storytelling, immersive environments, character progression, dynamic events, evolving storylines
+  R4 run 3   295.2s  structured           Sonder, DYO, Eon Altar
+Query expanded: Like Stardew Valley but more challenging farm management, challenging gameplay, strategy game, puzzle-solving, indie games, single-player experience, resource allocation, character progression, farming simulator, turn-based tactics, immersive world-building, non-violent conflict resolution, dynamic weather system, crop rotation, market trading, NPC interaction, seasonal cycles, life simulation
+  R5 run 1   169.1s  structured           Stardew Valley, Farm Together, Luma Island
+Query expanded: Like Stardew Valley but more challenging independent game, pixel art, charming town, crop management, puzzle-solving, single-player mode, serene environment, strategic planning, character development, farming simulator, narrative-driven, exploration, resource allocation, crafting system, daily routines, NPC interactions, life simulation, agricultural challenges, non-violent gameplay,
+  R5 run 2   138.6s  structured           Roots of Pacha, Luma Island, Dinkum
+Query expanded: Like Stardew Valley but more challenging agri-culture, puzzle-adventure, farm-management, indie-game, single-player mode, charming world-building, serene environment, resource management, non-violent gameplay, exploration-based game
+  R5 run 3   164.4s  structured           Roots of Pacha, Luma Island, Kynseed
+
+Written to eval/judge/system_outputs_w060.jsonl
+
+Telemetry
+  structured             14
+  structured-partial     1
+  identifiers rejected   1
+  evidence supported     1.00 mean

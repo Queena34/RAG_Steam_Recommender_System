@@ -44,11 +44,11 @@ justification.
 - SUMMERHOUSE
 
 **Set C**
-- Luma Island
 - Monument Valley
-- Cloudy Valley
-- Townframe
-- Yonder: The Cloud Catcher Chronicles
+- Ouros
+- Aery - Calm Mind
+- Solo
+- Areia: Pathway to Dawn
 
 
 ### Round 2 — Detailed Descriptive
@@ -63,11 +63,11 @@ justification.
 - Fantasy Map Simulator
 
 **Set B**
-- Riven
-- Planetiles
-- Zenge
-- Game of Fate: Chasing Through Time
+- Ghostory
 - Halver
+- Escape: The Brother's Saloon
+- The Lab - Escape Room
+- Agent Brain: Tricky Puzzles
 
 **Set C**
 - Outer Wilds
@@ -82,11 +82,11 @@ justification.
 **Prompt:** I don't want cozy or cute games - give me some combat games to play with friends
 
 **Set A**
+- Circle Empires Rivals
+- Battle Islands
 - Tom Clancy's Rainbow Six Siege
-- Splitgate
-- OPG: Clan Wars
 - Bodycam
-- ONRAID
+- Super Animal Royale
 
 **Set B**
 - Helldivers 2
@@ -123,10 +123,10 @@ justification.
 
 **Set C**
 - Sonder
-- DYO
-- Eon Altar
+- PICO PARK:Classic Edition
 - Never Split the Party
-- Guiding Light
+- Counter Agents
+- Handy Dandy
 
 
 ### Round 5 — Analogy
@@ -148,11 +148,11 @@ justification.
 - A Difficult Game About Climbing
 
 **Set C**
-- Stardew Valley
-- Farm Together
-- Luma Island
-- PomoFarm
 - Roots of Pacha
+- Land Of Idyllic Beauty
+- Everdream Valley
+- Cornucopia®
+- Stardew Valley
 
 
 ---
