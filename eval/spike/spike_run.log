@@ -15,3 +15,46 @@ Query expanded: something genuinely frightening to play alone at night horror, t
 Query expanded: a game with strong writing and characters worth caring about narrative-driven, compelling characters, immersive storylines, rich lore, character development, engaging dialogue, emotional depth, captivating world-building, strong writing, meaningful choices, interactive storytelling, deep narrative, well-rounded personalities, memorable protagonists, complex antagonists, heartfelt moments, dynamic relationships, evolving plot,
   [ 4/20]   89.6s  ok   n=5 outside=0 fields=y
 Query expanded: something I can pick up for ten minutes at a time indoor adventure, puzzle-solving, exploration, story-driven, narrative quest, time management, character customization, episodic content, immersive world-building, interactive fiction, choice-based gameplay, solo experience, mystery solving, escape room, detective work, historical setting, non-linear progression, moral choices, branching paths
+  [ 5/20]  112.1s  ok   n=5 outside=0 fields=y
+Query expanded: a game with a really strong sense of place open world, exploration, immersive environment, narrative-driven, adventure game, rich lore, detailed setting, character development, story-centric, environmental interaction, cinematic experiences, deep storyline, engaging plot, captivating atmosphere, interactive storytelling, compelling characters, dynamic events, evolving gameplay, memorable moments, emotional depth, thought
+  [ 6/20]  112.8s  ok   n=5 outside=0 fields=y
+Query expanded: something brutally hard that expects me to fail a lot hard difficulty, challenging gameplay, punishing obstacles, tough enemies, high skill requirement, frustrating experiences, demanding trials, relentless challenges, hardcore mode, survival elements, intense combat, grinding mechanics, steep learning curve, unforgiving boss fights, repetitive tasks, difficult puzzles, complex strategies, resource management, mastering
+  [ 7/20]  130.7s  ok   n=5 outside=0 fields=y
+Query expanded: an old-school looking game like the ones I grew up with retro-style game, pixel art, classic arcade games, 8-bit graphics, vintage video games, nostalgic gaming experience, old-school platformers, retro shooters, chiptune music, side-scrolling adventure, early console titles, simple controls, monochrome visuals, hand-drawn animation, turn-based
+  [ 8/20]  138.3s  ok   n=5 outside=0 fields=y
+Query expanded: something safe for young children to play family-friendly, educational games, puzzle-solving, adventure for kids, charming characters, interactive stories, safe online play, imaginative world, learning through fun, non-violent gameplay, child-safe content
+  [ 9/20]  102.4s  ok   n=5 outside=0 fields=y
+Query expanded: a game people remember mostly for its music nostalgic soundtrack, memorable melodies, iconic music tracks, epic soundscapes, atmospheric tunes, classic compositions, engaging audio experience, immersive background score, captivating musical themes, unforgettable chiptune, retro arcade sounds, orchestral scores, instrumental pieces, ambient music, dynamic range of songs, vocal
+  [10/20]  106.0s  ok   n=5 outside=0 fields=y
+Query expanded: combat where I move units on a grid and positioning matters more than reflexes grid-based strategy, turn-based tactics, tactical positioning, grid movement warfare, strategic combat, unit placement game, chess-like gameplay, real-time strategy (RTS), resource management, military units, battlefield control, command and conquer, base building, defensive maneuvers, enemy ambushes, terrain
+  [11/20]  106.7s  ok   n=5 outside=0 fields=y
+Query expanded: managing a small settlement and keeping everyone fed through the winter settlement management, winter survival, resource gathering, food production, crafting supplies, economic strategy, community building, cooperative gameplay, multiplayer cooperation, seasonal challenges, sustainable living, non-combat gaming, farming simulator, peaceful settlement, interactive storytelling, role-playing elements, life simulation, virtual economy, collaborative world
+  [12/20]  101.7s  ok   n=5 outside=0 fields=y
+Query expanded: card battles where I assemble the deck over the course of a run deck building, card game mechanics, turn-based strategy, collectible cards, fantasy RPG, strategic gameplay, deck customization, single-player mode, immersive experience
+
+Note: The provided query did not contain any negative constraints; hence all related gaming concepts were included in the response without exclusion of certain features like multiplayer or
+  [13/20]   85.7s  ok   n=5 outside=0 fields=y
+Query expanded: exploring one big connected map and unlocking abilities that open new routes explore adventure RPG open world exploration skill progression discovery new paths navigation abilities unlocking mysteries connected map journey immersive gameplay quest solving challenges non-combat multiplayer cooperative singleplayer fantasy genre magical realism epic storytelling vast landscapes enchanting environments rich lore captivating characters dynamic environment evolving storylines interactive narrative engaging quests transformative experiences expansive universe seamless integration
+  [14/20]  117.6s  ok   n=5 outside=0 fields=y
+Query expanded: piecing together evidence to work out who did it detective, mystery, investigation, clues, puzzle-solving, crime scene, evidence collection, narrative-driven, story-based, interactive fiction, whodunit, noir, detective genre, investigative gameplay, solving mysteries, uncovering secrets, non-linear storytelling, choice impacts, character development, immersive experience, solo
+  [15/20]  110.3s  ok   n=5 outside=0 fields=y
+Query expanded: weaving through dense patterns of enemy fire stealth gameplay, tactical movement, enemy ambushes, sniper rifle mechanics, cover system, first-person shooter, precision shooting, survival horror, high-stakes stealth, dynamic combat scenarios, immersive environments, adaptive AI enemies, fast-paced action, intense atmosphere, adrenaline rush, gripping storyline, challenging puzzles
+  [16/20]  100.3s  ok   n=5 outside=0 fields=y
+Query expanded: laying out roads and zoning while watching traffic back up urban planning simulator, city builder game, traffic management strategy, road construction RPG, zoning and development boardgame, metropolis expansion pack, urban design challenge, infrastructure planner, virtual town mayor, civic engagement roleplay
+  [17/20]   93.8s  ok   n=5 outside=0 fields=y
+Query expanded: serving a queue of impatient customers before the clock runs out service management, customer service simulator, time-management game, fast-paced gameplay, urgency in tasks, efficient multitasking, high-pressure environment, quick decision-making, productivity challenge, server operator, task prioritization, virtual assistant, efficiency simulation, rush job, deadline-driven, operational challenges, stress relief through work
+  [18/20]  106.5s  ok   n=5 outside=0 fields=y
+Query expanded: planting crops and looking after animals as the seasons turn agriculture simulator, farm management game, seasonal crop growing, animal husbandry, rural lifestyle, virtual farmer, eco-friendly gameplay, sustainable farming, countryside living, pastoral care, nature exploration, agribusiness, livestock breeding, organic produce cultivation, permaculture practices, green thumb challenge, harvest festival celebration
+  [19/20]  114.1s  ok   n=5 outside=0 fields=y
+Query expanded: slow creeping dread rather than things jumping out at me horror, suspenseful atmosphere, eerie ambiance, psychological thriller, unsettling mood, creeping fear, survival horror, tense gameplay, dark setting, mysterious events, jump scares, ghostly encounters, paranormal activity, supernatural elements, haunted locations, cursed environment, restless spirits, unknown threats, sinister presence, haunting
+  [20/20]  125.4s  ok   n=5 outside=0 fields=y
+
+====================================================
+  valid JSON            20/20 (100%)   threshold 80%
+  exactly five items    20/20 (100%)
+  all fields present    20/20 (100%)
+  no ids outside set    20/20 (100%)
+  latency  median 106.5s  min 82.3s  max 138.3s
+
+  verdict: PASS (>= 80% valid JSON)
+  written to /Users/queena/Developer/steam-recommender/eval/spike/schema_spike_results.jsonl
