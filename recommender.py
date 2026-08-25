@@ -42,7 +42,13 @@ BM25_MAX_GAMES = 0          # 0 = all games; set to N to limit BM25 corpus size
 # goes into the corpus would leave the stale cache in place -- the change
 # simply would not take effect, and nothing would say so.
 BM25_CORPUS_VERSION = 2
-LLM_TIMEOUT = 150           # seconds before giving up on an LLM call
+# Seconds before giving up on an LLM call. Raised from 150 after measuring the
+# judge protocol: schema-constrained decoding over a full search costs 103-269s
+# on this CPU, and analogy prompts sit at the top of that range because query
+# expansion emits far more terms for them, lengthening every stage that follows.
+# At 150 the timeout fired on 3 of 15 runs and silently returned ranking order
+# instead of the generated shortlist.
+LLM_TIMEOUT = 360
 
 # Ollama constrains decoding to this schema, so malformed output cannot be
 # generated rather than merely being discouraged. The previous implementation

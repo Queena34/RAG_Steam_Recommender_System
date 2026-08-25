@@ -29,20 +29,40 @@ RUBRIC = """Score each recommendation set out of 100, as the sum of three dimens
   perspective                                                    40 points
 
 Judge only what is shown. Do not attempt to identify which system produced
-which set. Give the three sub-scores and the total for every set, with one
-sentence of justification per set."""
+which set. Give the three sub-scores for every set, plus one sentence of
+justification."""
 
 
-def load_system_outputs(path: Path) -> dict[int, list[str]]:
-    """Titles per round from the revised system, taking the first run."""
-    out: dict[int, list[str]] = {}
-    for line in path.read_text().splitlines():
-        if not line.strip():
+# Preference order when a round has several runs. A run that fell back to
+# ranking order is not the behaviour under test -- packaging one would mean
+# scoring the fallback path and reporting it as the revised system.
+MODE_PREFERENCE = ["structured", "structured-retry", "structured-partial", "fallback-ranking"]
+
+
+def load_system_outputs(paths: list[Path]) -> tuple[dict[int, list[str]], dict[int, str]]:
+    """Best available run per round, with the mode it came from.
+
+    Later files override earlier ones for the same round, so a re-run can be
+    passed after the original capture.
+    """
+    best: dict[int, tuple[int, list[str], str]] = {}
+    for path in paths:
+        if not path.exists():
             continue
-        rec = json.loads(line)
-        if rec.get("titles") and rec["round"] not in out:
-            out[rec["round"]] = rec["titles"]
-    return out
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            titles = rec.get("titles")
+            if not titles:
+                continue
+            mode = (rec.get("meta") or {}).get("generation_mode", "fallback-ranking")
+            rank = MODE_PREFERENCE.index(mode) if mode in MODE_PREFERENCE else len(MODE_PREFERENCE)
+            rnd = rec["round"]
+            if rnd not in best or rank < best[rnd][0]:
+                best[rnd] = (rank, titles, mode)
+    return ({r: v[1] for r, v in best.items()},
+            {r: v[2] for r, v in best.items()})
 
 
 def main() -> None:
@@ -50,13 +70,15 @@ def main() -> None:
     ap.add_argument("--passes", type=int, default=3,
                     help="independent scoring passes the packet asks for")
     ap.add_argument("--seed", type=int, default=20260825)
-    ap.add_argument("--system", type=Path, default=HERE / "system_outputs.jsonl")
+    ap.add_argument("--system", type=Path, nargs="+",
+                    default=[HERE / "system_outputs.jsonl",
+                             HERE / "system_outputs_r5.jsonl"])
     ap.add_argument("--baseline", type=Path, default=HERE / "baseline_outputs.json")
     ap.add_argument("--packet", type=Path, default=HERE / "scoring_packet.md")
     ap.add_argument("--key", type=Path, default=HERE / "scoring_key.json")
     args = ap.parse_args()
 
-    revised = load_system_outputs(args.system)
+    revised, modes = load_system_outputs(list(args.system))
     baseline = json.loads(args.baseline.read_text())
     rng = random.Random(args.seed)
 
@@ -66,6 +88,10 @@ def main() -> None:
         f"Five rounds, three anonymous recommendation sets each. Please score the "
         f"whole packet **{args.passes} times**, in **separate conversations**, "
         "without referring back to earlier passes.",
+        "",
+        "The sets come from different recommender systems. Which is which is not "
+        "disclosed, and the ordering changes between rounds. Please judge only "
+        "what each set contains.",
         "",
         "## Why several passes",
         "",
@@ -105,35 +131,44 @@ def main() -> None:
             lines.append(f"**Set {label}**")
             lines += [f"- {t}" for t in titles]
             lines.append("")
-        lines += ["| Set | Relevance /30 | Verifiability /30 | Satisfaction /40 | Total /100 | Justification |",
-                  "|---|---|---|---|---|---|"]
-        lines += [f"| {label} | | | | | |" for label in labels]
         lines.append("")
 
     lines += [
         "---",
         "",
-        "## Returning the scores",
+        "## How to answer",
         "",
-        "Save each pass as `scores_pass1.json`, `scores_pass2.json`, … in this "
-        "directory, shaped as:",
+        "Reply with **one JSON object and nothing else** — no commentary before "
+        "or after it. Every round and every set must appear, with all three "
+        "sub-scores as numbers.",
         "",
         "```json",
-        '{"1": {"A": {"relevance": 0, "verifiability": 0, "satisfaction": 0},',
-        '       "B": {...}, "C": {...}},',
-        ' "2": { ... }}',
+        "{",
+        '  "1": {',
+        '    "A": {"relevance": 0, "verifiability": 0, "satisfaction": 0, "note": "one sentence"},',
+        '    "B": {"relevance": 0, "verifiability": 0, "satisfaction": 0, "note": "one sentence"},',
+        '    "C": {"relevance": 0, "verifiability": 0, "satisfaction": 0, "note": "one sentence"}',
+        "  },",
+        '  "2": { "A": {...}, "B": {...}, "C": {...} }',
+        "}",
         "```",
         "",
-        "`aggregate_scores.py` then joins them to the key and reports means and "
-        "standard deviations per system.",
+        "Totals are computed from the sub-scores, so do not include them.",
+        "Save the reply verbatim as `scores_pass1.json` (then `2`, `3`) in "
+        "`eval/judge/`, and run `aggregate_scores.py`.",
     ]
 
     args.packet.write_text("\n".join(lines) + "\n")
     args.key.write_text(json.dumps(key, indent=2) + "\n")
 
-    missing = [e["round"] for e in baseline["rounds"] if not revised.get(e["round"])]
     print(f"Packet written to {args.packet}")
     print(f"Key written to {args.key}  (do not include this in what the judge sees)")
+    print("\nRevised-system run selected per round:")
+    for rnd in sorted(modes):
+        flag = "" if modes[rnd] == "structured" else "   <-- not a clean run"
+        print(f"  round {rnd}: {modes[rnd]}{flag}")
+
+    missing = [e["round"] for e in baseline["rounds"] if not revised.get(e["round"])]
     if missing:
         print(f"\nWARNING: no revised-system output for round(s) {missing}; "
               f"those rounds compare only two sets.")

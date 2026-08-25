@@ -1,0 +1,27 @@
+FAISS index loaded: 30693 vectors
+Query prefix: 'search_query: '
+LLM model: phi4-mini:latest
+BM25 index loaded from cache: 39175 games
+Ready: 30693 games FAISS-indexed, embed=ollama:nomic-embed-text, llm=phi4-mini:latest
+
+Rounds: 1   runs each: 3
+
+Query expanded: Like Stardew Valley but more challenging agri-games, farm-management simulator, indie games, pixel art RPGs, charming townsfolk, challenging gameplay, turn-based strategy, farming sim, quaint village, seasonal crop rotation
+
+Note: The above list is generated based on the given query and does not contain any negative constraints such as "without
+  R5 run 1   153.2s  structured           Roots of Pacha, Land Of Idyllic Beauty, Everdream Valley
+Query expanded: Like Stardew Valley but more challenging farm management simulator, challenging gameplay, agricultural strategy, indie game, single-player mode, resource allocation, time-management puzzle, dynamic farming systems, virtual farm ownership, realistic crop cultivation, non-violent progression, immersive rural experience
+
+Note: The original query did not contain negative constraints; however, it was
+  R5 run 2   279.8s  structured           Farming Simulator 22, Pocket Harvest, Land Of Idyllic Beauty
+Query expanded: Like Stardew Valley but more challenging agri-culture challenge survival strategy puzzle exploration difficulty indie farm management resource management realistic farming mechanics progressive skill growth non-linear progression dynamic weather system seasonal cycles immersive gameplay narrative-driven story crafting community building cooperative multiplayer social interaction cooperative challenges cooperative tasks cooperative goals cooperative objectives cooperative activities cooperative projects cooperative achievements cooperative success cooperative rewards cooperative
+[warn] discarded 1 app_id(s) outside the candidate set
+  R5 run 3   190.4s  structured-partial   Farming Simulator 25, Pocket Harvest, Red Planet Farming
+
+Written to eval/judge/system_outputs_r5.jsonl
+
+Telemetry
+  structured             2
+  structured-partial     1
+  identifiers rejected   1
+  evidence supported     0.92 mean

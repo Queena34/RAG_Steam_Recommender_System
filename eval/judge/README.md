@@ -79,3 +79,45 @@ about the generated text. Neither replaces the other.
 Five prompts also remain few. The revised protocol addresses judge noise
 through repeated passes; it does not address the sample size, which would need
 more prompts and, for a like-for-like comparison, ChatGPT responses for them.
+
+---
+
+## Choosing a judge
+
+The judge must not be one of the systems being compared, and must not be
+whoever implemented the changes. Both constraints follow from the same
+principle: the protocol should exclude the conflict structurally rather than
+rely on the scorer's restraint.
+
+That rules out two candidates for this packet:
+
+| Candidate | Problem |
+|---|---|
+| Whoever implemented the changes | Scores its own work; report §3.3.1's independence claim would become untrue |
+| ChatGPT | Its own recommendations are one of the three sets being scored |
+
+LLM judges show a documented preference for outputs resembling their own, and
+anonymisation reduces but does not remove it. If ChatGPT is used regardless,
+drop its own sets from the packet — losing the commercial comparison is a
+smaller cost than having a competitor judge itself.
+
+## Running a scoring pass
+
+Whichever model is used:
+
+1. **Start a fresh conversation.** Not a continuation of anything related to
+   this project.
+2. **Disable persistent memory.** ChatGPT carries memory across chats;
+   use a Temporary Chat. The original run did the same, for the same reason —
+   report §3.3.1 notes each session was temporary "to prevent user memory and
+   reference".
+3. **Paste `scoring_packet.md` in full**, and nothing else. No context about
+   the project, the systems, or what any change was meant to achieve.
+4. **Save the reply verbatim** as `scores_pass1.json`.
+5. **Repeat twice more**, each in a new temporary conversation. Do not paste
+   earlier answers or ask the model to reconsider — the passes are only
+   independent if the model has not seen its own previous scores.
+
+Never paste `scoring_key.json`, and do not answer questions about which set is
+which, even after scoring — a follow-up pass in the same conversation would be
+contaminated.
