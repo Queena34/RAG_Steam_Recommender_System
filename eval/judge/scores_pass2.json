@@ -1,0 +1,27 @@
+{
+  "1": {
+    "A": {"relevance": 29, "verifiability": 30, "satisfaction": 37, "note": "Five well-known, unambiguously calming Steam titles spanning farming, tile-laying, exploration and building."},
+    "B": {"relevance": 27, "verifiability": 22, "satisfaction": 30, "note": "Cozy and on-theme, but Hello Kitty Island Adventure is not a reliable Steam listing and the set leans on very small builder titles."},
+    "C": {"relevance": 26, "verifiability": 24, "satisfaction": 26, "note": "Genuinely meditative picks, though Monument Valley's Steam availability is shaky and the Aery/Areia tier is thin, low-engagement fare."}
+  },
+  "2": {
+    "A": {"relevance": 20, "verifiability": 28, "satisfaction": 24, "note": "Chants of Sennaar and Minds Beneath Us fit well, but Storyteller and SteamWorld Dig are undemanding and Fantasy Map Simulator is a tool, not a challenge."},
+    "B": {"relevance": 14, "verifiability": 22, "satisfaction": 12, "note": "Generic budget escape-room and brain-teaser titles that require no gaming experience and have little depth."},
+    "C": {"relevance": 30, "verifiability": 30, "satisfaction": 39, "note": "Canonical high-ceiling puzzle and systems games that reward experienced players and are all firmly established on Steam."}
+  },
+  "3": {
+    "A": {"relevance": 21, "verifiability": 28, "satisfaction": 24, "note": "Siege and Bodycam fit the brief, but Super Animal Royale is exactly the cute aesthetic excluded and the strategy titles aren't really co-op combat."},
+    "B": {"relevance": 30, "verifiability": 30, "satisfaction": 39, "note": "Five gritty, squad-based co-op shooters that respect the negation perfectly and are all proven crowd-pleasers."},
+    "C": {"relevance": 16, "verifiability": 28, "satisfaction": 18, "note": "Two of the five are overtly cute and We Who Are About To Die is largely single-player, so the constraint is broken repeatedly."}
+  },
+  "4": {
+    "A": {"relevance": 24, "verifiability": 22, "satisfaction": 22, "note": "Sven Co-op and PICO PARK are correct free co-op, but Operation: Tango Friend Pass requires a paying owner and Wolvesville/Sonder are obscure or not co-op."},
+    "B": {"relevance": 28, "verifiability": 30, "satisfaction": 36, "note": "All five are genuinely free-to-play with large active playerbases; only Path of Exile stretches the co-op framing."},
+    "C": {"relevance": 23, "verifiability": 20, "satisfaction": 17, "note": "Nominally free and co-op, but almost all are tiny, low-visibility titles with negligible player counts."}
+  },
+  "5": {
+    "A": {"relevance": 30, "verifiability": 29, "satisfaction": 37, "note": "Every pick is a farming-life sim with a harder edge — resource pressure, combat, or roguelike stakes — which is exactly the analogy requested."},
+    "B": {"relevance": 14, "verifiability": 26, "satisfaction": 20, "note": "Reads the prompt as 'difficult' while ignoring 'like Stardew Valley'; Diablo IV and A Difficult Game About Climbing share nothing with the reference."},
+    "C": {"relevance": 12, "verifiability": 25, "satisfaction": 18, "note": "Cozy Stardew clones that are equally or less challenging, and recommending Stardew Valley itself is a straightforward failure."}
+  }
+}

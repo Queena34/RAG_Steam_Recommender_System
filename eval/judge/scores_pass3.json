@@ -1,0 +1,27 @@
+{
+  "1": {
+    "A": {"relevance": 29, "verifiability": 30, "satisfaction": 37, "note": "A tight spread of universally-loved low-stress titles across farming, puzzle, tidying and exploration, all major Steam releases."},
+    "B": {"relevance": 28, "verifiability": 29, "satisfaction": 31, "note": "Genuinely relaxing and all real Steam entries, but leans on lighter niche ambience titles with narrower appeal."},
+    "C": {"relevance": 26, "verifiability": 24, "satisfaction": 26, "note": "Meditative in theme but several are thin, low-profile titles and at least one is best known as a mobile release."}
+  },
+  "2": {
+    "A": {"relevance": 21, "verifiability": 27, "satisfaction": 24, "note": "Two strong cerebral picks are diluted by a light action-platformer and a non-game map tool that ignore the experience requirement."},
+    "B": {"relevance": 15, "verifiability": 24, "satisfaction": 14, "note": "Generic escape-room and brain-teaser shovelware that is puzzle-shaped but demands no gaming experience and offers little depth."},
+    "C": {"relevance": 30, "verifiability": 30, "satisfaction": 39, "note": "Exactly the canonical set for demanding, intellect-driven design, every one a well-known Steam title with proven staying power."}
+  },
+  "3": {
+    "A": {"relevance": 20, "verifiability": 24, "satisfaction": 24, "note": "Mostly combat-focused but includes an explicitly cute animal battle royale, directly violating the stated exclusion, plus one obscure/dated entry."},
+    "B": {"relevance": 30, "verifiability": 30, "satisfaction": 38, "note": "All five are gritty co-op combat games with friends, respecting the negation cleanly and with strong active player bases."},
+    "C": {"relevance": 17, "verifiability": 28, "satisfaction": 22, "note": "Two picks are overtly cute cartoon titles that break the constraint, and the rest skew toward light party brawlers over sustained combat."}
+  },
+  "4": {
+    "A": {"relevance": 24, "verifiability": 24, "satisfaction": 22, "note": "Free and co-op in the main, but one is a companion pass requiring a paid owner and two are very low-visibility titles."},
+    "B": {"relevance": 29, "verifiability": 30, "satisfaction": 36, "note": "Well-established free-to-play co-op games with large populations; the constraint is satisfied without stretching."},
+    "C": {"relevance": 22, "verifiability": 22, "satisfaction": 18, "note": "Nominally free co-op, but the list is dominated by tiny obscure releases with little content or community."}
+  },
+  "5": {
+    "A": {"relevance": 29, "verifiability": 30, "satisfaction": 36, "note": "Each keeps the farming/life-sim core while adding real difficulty pressure through survival, combat or management systems."},
+    "B": {"relevance": 13, "verifiability": 24, "satisfaction": 17, "note": "Reads the prompt as 'hard games' only, abandoning the Stardew resemblance entirely, and one entry has a troubled availability history."},
+    "C": {"relevance": 16, "verifiability": 27, "satisfaction": 20, "note": "Close cozy-farming analogues but none are more challenging, and including Stardew Valley itself ignores the comparative ask."}
+  }
+}
