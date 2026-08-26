@@ -1,0 +1,27 @@
+{
+  "1": {
+    "A": {"relevance": 29, "verifiability": 29, "satisfaction": 38, "note": "Five well-established, easily findable calm-genre titles spanning farming, tile-laying, and short exploration, with no filler."},
+    "B": {"relevance": 28, "verifiability": 29, "satisfaction": 33, "note": "All genuinely relaxing and on Steam, though Virtual Cottage and SUMMERHOUSE are ambient toys rather than games and narrow the appeal."},
+    "C": {"relevance": 24, "verifiability": 19, "satisfaction": 25, "note": "Thematically on-target but several entries are obscure or of uncertain Steam availability, and Monument Valley is primarily a mobile title."}
+  },
+  "2": {
+    "A": {"relevance": 20, "verifiability": 26, "satisfaction": 25, "note": "Chants of Sennaar fits well, but Storyteller and Fantasy Map Simulator are light and SteamWorld Dig is action-platforming rather than intellectually demanding."},
+    "B": {"relevance": 15, "verifiability": 23, "satisfaction": 18, "note": "Riven is an excellent match, but Zenge and Planetiles are casual mobile-style puzzlers that contradict the experience requirement."},
+    "C": {"relevance": 30, "verifiability": 30, "satisfaction": 38, "note": "A canonical set of deduction, systems, and programming games that all reward prior gaming literacy."}
+  },
+  "3": {
+    "A": {"relevance": 26, "verifiability": 23, "satisfaction": 27, "note": "Correctly non-cozy competitive shooters, but OPG: Clan Wars and ONRAID are low-profile entries that dilute an otherwise solid list."},
+    "B": {"relevance": 30, "verifiability": 30, "satisfaction": 39, "note": "Five prominent squad-based combat games built specifically around playing with friends, with no tonal violations."},
+    "C": {"relevance": 13, "verifiability": 26, "satisfaction": 21, "note": "Super Animal Royale and Bopl Battle directly violate the no-cute constraint, and We Who Are About To Die is not a co-op experience."}
+  },
+  "4": {
+    "A": {"relevance": 24, "verifiability": 24, "satisfaction": 26, "note": "Sven Co-op and PICO PARK satisfy the free co-op constraint cleanly, but Operation: Tango requires one paid copy and Wolvesville and Sonder are thin picks."},
+    "B": {"relevance": 29, "verifiability": 30, "satisfaction": 37, "note": "All five are genuinely free-to-play with substantial co-op or team content and very large active playerbases."},
+    "C": {"relevance": 17, "verifiability": 17, "satisfaction": 18, "note": "Mostly obscure titles and several are paid rather than free, so the hard constraint is not reliably met."}
+  },
+  "5": {
+    "A": {"relevance": 30, "verifiability": 29, "satisfaction": 37, "note": "Every entry keeps the farming or life-sim loop while adding real pressure through decay, combat, or roguelike systems."},
+    "B": {"relevance": 12, "verifiability": 27, "satisfaction": 19, "note": "Interprets the prompt as difficulty alone and drops the Stardew Valley resemblance entirely."},
+    "C": {"relevance": 11, "verifiability": 22, "satisfaction": 18, "note": "Recommends Stardew Valley itself plus gentler farming sims, which inverts the 'more challenging' requirement."}
+  }
+}

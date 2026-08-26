@@ -1,0 +1,27 @@
+{
+  "1": {
+    "A": {"relevance": 29, "verifiability": 29, "satisfaction": 38, "note": "Five well-known, unambiguously calming titles spanning farming, puzzle, exploration and building, all easy to find on Steam."},
+    "B": {"relevance": 28, "verifiability": 28, "satisfaction": 33, "note": "All genuinely relaxing and all on Steam, though Virtual Cottage and Hello Kitty Island Adventure are thin as games and narrow the appeal."},
+    "C": {"relevance": 24, "verifiability": 20, "satisfaction": 25, "note": "Broadly the right mood but leans on obscure or hard-to-confirm entries like Cloudy Valley and Townframe, and Monument Valley is primarily known as a mobile title."}
+  },
+  "2": {
+    "A": {"relevance": 21, "verifiability": 26, "satisfaction": 26, "note": "Chants of Sennaar and Minds Beneath Us fit well, but SteamWorld Dig is a light action-platformer and Fantasy Map Simulator is a tool rather than a demanding game."},
+    "B": {"relevance": 15, "verifiability": 24, "satisfaction": 18, "note": "Riven is a strong match, but Zenge and Planetiles are deliberately casual puzzlers that contradict the request for experience-demanding depth."},
+    "C": {"relevance": 30, "verifiability": 30, "satisfaction": 39, "note": "A canonical lineup of deduction, systems and knowledge-based design that assumes real player literacy and rewards it."}
+  },
+  "3": {
+    "A": {"relevance": 25, "verifiability": 25, "satisfaction": 26, "note": "Correctly non-cozy and combat-focused, but leans PvP over playing with friends and includes low-profile entries like OPG: Clan Wars and ONRAID."},
+    "B": {"relevance": 30, "verifiability": 30, "satisfaction": 39, "note": "Every entry is a proven squad-based combat game with friends, and none of them brush against the excluded cozy or cute register."},
+    "C": {"relevance": 16, "verifiability": 27, "satisfaction": 22, "note": "Super Animal Royale and Bopl Battle directly violate the stated aversion to cute, leaving only part of the set on target."}
+  },
+  "4": {
+    "A": {"relevance": 24, "verifiability": 22, "satisfaction": 25, "note": "Sven Co-op and PICO PARK Classic satisfy the free co-op constraint cleanly, but Operation: Tango only frees the second player and Wolvesville and Sonder are marginal fits."},
+    "B": {"relevance": 29, "verifiability": 29, "satisfaction": 36, "note": "All five are free-to-play with substantial co-op content and large active communities, making the hard constraint reliably met."},
+    "C": {"relevance": 20, "verifiability": 16, "satisfaction": 18, "note": "Several picks are obscure or of uncertain price and availability, with Eon Altar in particular being a paid and long-inactive title."}
+  },
+  "5": {
+    "A": {"relevance": 29, "verifiability": 29, "satisfaction": 37, "note": "Each title keeps the farming or life-sim loop while adding real pressure through survival, combat, decay or roguelike stakes."},
+    "B": {"relevance": 14, "verifiability": 25, "satisfaction": 20, "note": "Delivers difficulty but abandons the Stardew Valley reference point almost entirely, offering an ARPG, a climbing joke game and a hardcore MMO."},
+    "C": {"relevance": 15, "verifiability": 24, "satisfaction": 20, "note": "Captures the farming similarity but ignores the challenge requirement, and recommending Stardew Valley itself back to the user is a wasted slot."}
+  }
+}
