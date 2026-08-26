@@ -1,0 +1,27 @@
+{
+  "1": {
+    "A": "chatgpt",
+    "B": "revised",
+    "C": "original"
+  },
+  "2": {
+    "A": "chatgpt",
+    "B": "original",
+    "C": "revised"
+  },
+  "3": {
+    "A": "original",
+    "B": "chatgpt",
+    "C": "revised"
+  },
+  "4": {
+    "A": "original",
+    "B": "chatgpt",
+    "C": "revised"
+  },
+  "5": {
+    "A": "chatgpt",
+    "B": "revised",
+    "C": "original"
+  }
+}
