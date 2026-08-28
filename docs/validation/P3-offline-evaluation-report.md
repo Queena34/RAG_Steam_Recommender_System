@@ -24,6 +24,8 @@ Recall@50 在 20/20 条配对查询中一致，但当前样本中 Cross-encoder 
 
 同样的 ONNX 接口已成功加载 `bge-reranker-base`，但在当前 Intel CPU 上一次 50 候选批量推理超过 60 秒，未达到 15 秒预算，因此没有把未完成的 BGE 结果伪装成质量对比。MiniLM 是当前唯一完成延迟与样本评测的候选。
 
+补充验证：Ollama 恢复后，完整 FAISS + BM25 已确认启用。50 条 Known-item 的无重排基线完成，Recall@50 为 `0.120 ± 0.046`、nDCG@10 为 `0.024 ± 0.014`。同样的 50 条重排组在本机因 Ollama embedding 与 CPU Cross-encoder 组合耗时过长，未完成，因此没有报告不完整的重排指标。500 条全量任务也确认需要改造 BM25/SQLite 缓存或迁移到更强的离线计算环境。
+
 评测脚本新增 `eval/analyze_p3.py`，可按 `category` 汇总配对差异；`eval/run_eval.py` 已记录每条查询的 category 和 latency，后续可直接执行完整 Track A/B。权重扫描仍应在完整候选结果上进行，不能基于当前 20 条样本直接重新标定。
 
 ## 决策
