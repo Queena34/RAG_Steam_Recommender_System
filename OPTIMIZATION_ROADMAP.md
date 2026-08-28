@@ -129,11 +129,11 @@ Cross-encoder / 数值排序
 - 多条件查询的逐条件满足率；
 - 过度过滤比例不高于预设阈值。
 
-## 5. P2：真正的 Cross-encoder 重排（代码已接入：2026-08-28；模型验证待完成）
+## 5. P2：真正的 Cross-encoder 重排（技术验证已完成：2026-08-28；质量评测待完成）
 
 ### 5.1 目标位置
 
-Cross-encoder 代码已放在 RRF 之后、最终质量排序之前。当前仓库不包含模型权重，未设置 `RAGLOOKER_RERANKER_MODEL_DIR` 时会明确回退到原有数值排序：
+Cross-encoder 代码已放在 RRF 之后、最终质量排序之前。2026-08-28 已使用 `Xenova/ms-marco-MiniLM-L-6-v2` 的真实 ONNX 导出版本完成加载、50 候选推理和延迟验证；详细结果见 [`docs/validation/P2-cross-encoder-validation.md`](docs/validation/P2-cross-encoder-validation.md)。当前仓库不包含模型权重，未设置 `RAGLOOKER_RERANKER_MODEL_DIR` 时会明确回退到原有数值排序：
 
 ```text
 FAISS/BM25：39,000 → 100 + 100

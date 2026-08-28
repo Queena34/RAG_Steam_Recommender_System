@@ -80,7 +80,7 @@ PRD-000 总体方案              执行台账：做哪些、现在到哪了
 | [PRD-004](PRD-004-structured-generation.md) | 结构化生成与标识符校验 | 已完成 | 2026-08-25 | `8fc54c2` |
 | [PRD-005](PRD-005-judge-protocol-rerun.md) | LLM-as-judge 协议修订与重跑 | 已完成 | 2026-08-25 | `565484d` |
 | [PRD-006](PRD-006-quality-weight-recalibration.md) | 质量权重重新标定 | 已完成（未通过）| 2026-08-25 | `842a7ae` |
-| [PRD-007](PRD-007-cross-encoder-reranking.md) | Cross-encoder 重排与排序层重构 | 待确认 | 2026-08-26 | — |
+| [PRD-007](PRD-007-cross-encoder-reranking.md) | Cross-encoder 重排与排序层重构 | 技术验证通过，质量评测待完成 | 2026-08-26 | `bd405dc` |
 
 ### 早于本流程的变更
 

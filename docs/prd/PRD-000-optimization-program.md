@@ -80,7 +80,7 @@
 | **C6** | 多样性约束 | §8.3 | ✅ 已完成 | 流程前 | `94830c3` |
 | **C7** | 索引语料重建（前缀 / 覆盖率 / 评论采样 / Modes） | §5 | ✅ 已完成 | [PRD-001](PRD-001-index-corpus-rebuild.md) | `6c62987`（代码） |
 | **C8** | BM25 语料对齐（纳入评论） | §5.1 §7.1 | ✅ 已完成 | [PRD-003](PRD-003-bm25-corpus-parity.md) | — |
-| **C2** | Cross-encoder 重排 | §8.1 | 🔄 待确认 | [PRD-007](PRD-007-cross-encoder-reranking.md) | — |
+| **C2** | Cross-encoder 重排 | §8.1 | 🔄 技术验证通过，质量评测待完成 | [PRD-007](PRD-007-cross-encoder-reranking.md) | `bd405dc` |
 | **C3** | 结构化生成 + app_id 校验 | §9 | ✅ 已完成 | [PRD-004](PRD-004-structured-generation.md) | — |
 | **C4** | 查询分解 + 硬约束预过滤（Tool Calling） | §6 | ⬜ 未开始 | 待立项 | — |
 
