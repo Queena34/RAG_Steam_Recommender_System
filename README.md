@@ -1,6 +1,6 @@
 # Advanced Analytics G28 — Project 3: RAG-Based Steam Game Recommender
 
-A retrieval-augmented generation (RAG) system that recommends Steam games based on natural language queries, combining hybrid vector + keyword retrieval with LLM-based reranking and answer generation.
+A retrieval-augmented generation (RAG) system that recommends Steam games from natural-language queries. It combines FAISS semantic retrieval, BM25 lexical retrieval, deterministic score-based ranking, and Ollama-based structured recommendation generation.
 
 ---
 
@@ -8,7 +8,7 @@ A retrieval-augmented generation (RAG) system that recommends Steam games based 
 
 The project data lives in the `steam_games_reviews_25.sqlite` SQLite database (not tracked in git due to size).
 
-Data about games on the Steam shop was scraped up until the beginning of April 2026. Only games with more than 25 reviews were kept. For each game, only the most recent 500 English reviews were scraped.
+Data about games on the Steam shop was scraped up until the beginning of April 2026. The database contains 39,176 game records and 7,679,845 reviews. The current dense index includes games with `positive > 10` (30,693 games); BM25 is built over the full catalogue.
 
 | Table | Description |
 |-------|-------------|
@@ -31,7 +31,7 @@ User Query
     │
     ▼
 ┌─────────────────────────────────┐
-│  LLM Reranking + Hard Filters   │  ← phi4-mini via Ollama
+│  RRF + quality ranking          │  ← relevance, Wilson quality, preferences, diversity
 └─────────────────────────────────┘
     │
     ▼
@@ -43,7 +43,7 @@ User Query
 Flask API → Web Frontend
 ```
 
-**Fallback chain:** if FAISS index is unavailable → BM25 only; if LLM is unavailable → similarity-score ranking + formatted text output.
+Both FAISS and BM25 run when available. Their top-100 ranked lists are fused with RRF, then reduced to 50 candidates. If one retriever is unavailable, the other is used; if neither is available, SQLite `LIKE` search is used. LLM generation has a structured-output retry and a plain-text fallback.
 
 ---
 
@@ -75,13 +75,13 @@ Flask API → Web Frontend
 | Method | Description |
 |--------|-------------|
 | `retrieve_candidates()` | Hybrid FAISS + BM25 retrieval; returns top 50 candidates |
-| `rank_candidates()` | LLM-based reranking with hard filters (price, platform, genre) |
-| `generate_answer()` | LLM generates a natural language recommendation with reasoning |
+| `rank_candidates()` | Applies explicit free/platform filters when possible, score-based preference bonuses, review-aware quality ranking, and diversity constraints |
+| `generate_answer()` | LLM selects candidate `app_id`s and produces reasons/evidence through a JSON schema; falls back when unavailable |
 | `search()` | Orchestrates the full pipeline; returns a fixed JSON shape consumed by the Flask API |
 
 ### `build_index.py`
 
-Embeds all game descriptions using `nomic-embed-text` (via Ollama) and stores the resulting vectors in a FAISS index. This step is run once and may take several hours depending on the number of games.
+Builds one rich document per eligible game using `nomic-embed-text` via Ollama. Documents include metadata, gameplay modes, rating information, and sampled positive/negative reviews. The resulting 768-dimensional vectors are stored in a FAISS `IndexFlatIP` index. This step is run once and may take several hours.
 
 ---
 
@@ -106,7 +106,7 @@ ollama pull phi4-mini
 
 ### 3. Add the database file
 
-The SQLite database is not included in this repository due to its size. Place `steam_games_reviews_25.sqlite` in the project root directory.
+The SQLite database is not included in this repository due to its size. Place `steam_games_reviews_25.sqlite` in the project root directory, or set `RAGLOOKER_DB_PATH` to its location.
 
 ### 4. Build the FAISS index
 

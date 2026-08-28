@@ -23,21 +23,21 @@ User query (natural language)
 [Query Expansion]  ── LLM (Ollama) generates 8–10 related keywords/tags
         │
         ▼
-[Candidate Retrieval]  ── selects top-50 candidate games via one of three strategies:
-        │   1. FAISS vector search  (primary, semantic)
-        │   2. BM25 lexical search  (fallback if FAISS unavailable)
-        │   3. SQLite LIKE search   (last-resort keyword fallback)
+[Candidate Retrieval]  ── selects top-50 candidate games:
+        │   1. FAISS vector search and BM25 lexical search each return top-100
+        │   2. Reciprocal Rank Fusion (RRF) merges both ranked lists
+        │   3. SQLite LIKE search is used only if neither index is available
         │
         ▼
-[Re-scoring]  ── blends retrieval score with log-popularity (positive review count)
+[Re-scoring]  ── blends normalized RRF relevance with Wilson review quality
         │
         ▼
-[Ranking]  ── sorts top-50 candidates by blended score; returns top-5
-        │      (LLM re-ranking implemented but disabled on CPU due to latency)
+[Ranking]  ── applies explicit free/platform filters, preference bonuses,
+        │      review-aware quality ranking and diversity; keeps top-10
         │
         ▼
-[Answer Generation]  ── LLM writes a 4–5 sentence natural-language recommendation
-        │              (falls back to a simple template if LLM is unavailable)
+[Answer Generation]  ── schema-constrained LLM selects up to five app_ids and
+        │              writes reasons/evidence; invalid output is retried or falls back
         │
         ▼
 JSON response  →  { matches: [...], answer: "...", meta: {...} }
@@ -49,19 +49,20 @@ JSON response  →  { matches: [...], answer: "...", meta: {...} }
 
 ### `retrieve_candidates(query)`
 
-Expands the user query with LLM-generated keywords, then fetches up to 50 candidate games using a priority cascade:
+Expands the user query with LLM-generated keywords, runs both available retrievers, fuses their ranked IDs with RRF, and hydrates the best 50 candidates:
 
-1. **FAISS vector search** (`_retrieve_vector`): embeds the expanded query with `nomic-embed-text` via Ollama, performs an inner-product (cosine) search on the pre-built FAISS index, fetches full game details from SQLite, and blends the cosine similarity score with log-normalised popularity (weight 0.5 / 0.5).
-2. **BM25 lexical search** (`_retrieve_bm25`): tokenises the query with NLTK + Porter stemmer, scores all games in the in-memory BM25 corpus, and blends the BM25 score with log-popularity (weight 0.85 / 0.15).
-3. **SQLite LIKE fallback** (`_retrieve_keyword`): performs AND-then-OR keyword matching across game name, description, tags, and genres columns.
+1. **FAISS vector search** (`_retrieve_vector_ids`): embeds the expanded query with the query prefix stored in `vector_index/meta.json`, normalizes it, and searches the 768-dimensional inner-product index.
+2. **BM25 lexical search** (`_retrieve_bm25_ids`): tokenizes with a Porter stemmer and searches a cached corpus containing names, descriptions, tags, genres, and the same sampled review text used by the vector corpus.
+3. **RRF fusion** (`_rrf_fuse`): merges the two top-100 ID lists using `1 / (k + rank)`, with `k=60`, avoiding incompatible raw-score scales.
+4. **SQLite LIKE fallback** (`_retrieve_keyword`): performs AND-then-OR keyword matching across game name, description, tags, and genres only when both indexed retrievers fail.
 
 ### `rank_candidates(query, candidates)`
 
-Sorts the 50 candidates by their pre-computed `_score` (set during retrieval) and returns the top 5. LLM re-ranking (`_rank_with_llm`) is implemented but intentionally disabled: on CPU hardware, the long prompt prefill takes ~550 seconds per query, making it impractical. The semantic retrieval quality alone is sufficient.
+Sorts candidates by the pre-computed score plus small explicit-preference bonuses, applies conditional free/platform filters, then applies developer/tag diversity constraints and returns up to 10 candidates. The generative `_rank_with_llm()` implementation remains in the file but is not called at runtime because it takes roughly 550 seconds per query on the target CPU. The final LLM generation step selects the displayed five when it succeeds.
 
 ### `generate_answer(query, matches)`
 
-Calls `_generate_with_llm` inside a 90-second timeout thread. The LLM receives a compact prompt listing the top-5 games (name, top-4 tags, first 100 characters of description) and is asked to write 4–5 enthusiastic sentences explaining why each game fits the query. If the LLM is unavailable or times out, `_simple_answer` returns a plain-text fallback listing the game names.
+Calls structured generation inside a 360-second timeout thread. The LLM receives up to 10 ranked candidates with app IDs, names, tags, ratings, and short descriptions. Ollama enforces a schema containing five recommendation slots; the code validates IDs against the candidate set, removes duplicates, measures evidence overlap, retries once at lower temperature when necessary, and tops up from the ranked list when the output is partial. If generation fails or times out, `_simple_answer` returns a plain-text fallback.
 
 ---
 
@@ -70,11 +71,11 @@ Calls `_generate_with_llm` inside a 90-second timeout thread. The LLM receives a
 | Component | Library / Tool | Role |
 |---|---|---|
 | Web framework | Flask 3.x | HTTP server and routing |
-| Vector index | FAISS (`faiss-cpu`) | Approximate nearest-neighbour search over game embeddings |
+| Vector index | FAISS (`faiss-cpu`) | Exact inner-product search over normalized game embeddings |
 | Embedding model | `nomic-embed-text` via Ollama | Converts text to 768-d vectors for semantic search |
 | LLM | `phi4-mini` (or any available Ollama model) | Query expansion, answer generation, optional re-ranking |
-| Lexical search | `rank-bm25` + NLTK | BM25Okapi index as fallback when FAISS is unavailable |
-| Database | SQLite (`steam_games_reviews_25.sqlite`) | Stores ~39k game records and up to 500 reviews per game |
+| Lexical search | `rank-bm25` + NLTK | Cached BM25Okapi corpus, run in parallel with FAISS |
+| Database | SQLite (`steam_games_reviews_25.sqlite`) | Stores 39,176 game records and 7,679,845 reviews |
 | Numerical compute | NumPy | Vector normalisation and score blending |
 | Progress display | tqdm | Index build progress bar |
 
@@ -86,11 +87,11 @@ The index is built offline and only needs to be run once (or resumed if interrup
 
 1. **Connect to Ollama** — verifies that `nomic-embed-text` is reachable and records the embedding dimension.
 2. **Resume support** — if `vector_index/index.faiss` and `vector_index/meta.json` already exist, the builder loads them and skips already-indexed games.
-3. **Fetch games in batches** — queries games with `positive > 100` from SQLite in batches of 100, filtering out already-indexed IDs.
-4. **Build document text** — for each game, constructs a rich plain-text document containing: game name, short description, genres, top-15 tags, release date, rating percentage, and up to 5 player review snippets (max 200 chars each).
+3. **Fetch games in batches** — queries games with `positive > 10` from SQLite in batches of 100, filtering out already-indexed IDs.
+4. **Build document text** — for each game, constructs a rich document containing: game name, short description, genres, top-15 tags, whitelisted gameplay modes, release date, rating percentage, six helpful positive-review snippets and three negative-review snippets.
 5. **Embed in sub-batches** — sends documents to Ollama in sub-batches of 50 for embedding.
 6. **L2-normalise and add to FAISS** — vectors are L2-normalised (enabling inner-product search to behave as cosine similarity) before being added to a `faiss.IndexFlatIP` index.
-7. **Checkpoint after every batch** — saves the FAISS index and a `meta.json` file (storing `app_ids`, model name, and dimension) so the build can be safely interrupted and resumed.
+7. **Checkpoint after every batch** — atomically saves the FAISS index and a `meta.json` file storing `app_ids`, model, dimension, document/query prefixes, and the coverage threshold so the build can be safely interrupted and resumed.
 
 The resulting `vector_index/` directory contains:
 - `index.faiss` — the serialised FAISS index
@@ -106,7 +107,7 @@ uv sync
 ollama pull nomic-embed-text
 ollama pull phi4-mini
 
-3. 把sqlite数据库文件放入项目根目录
+3. 把 sqlite 数据库文件放入项目根目录，或设置 `RAGLOOKER_DB_PATH`
 
 4. 建立FAISS索引（需要几个小时）
 uv run python build_index.py
@@ -163,7 +164,6 @@ If you want more fighting but still a strong horror atmosphere, this is a top ch
 
 Best open-world survival with horror flavor: Sons Of The Forest
 This is less “tight corridor terror” and more “craft, build, and survive in a horrifying wilderness.” Best if you want survival systems first and horror second.
-
 
 
 
