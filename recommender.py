@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import random
 import re
 import sqlite3
 import threading
@@ -181,6 +180,10 @@ class GameSearchEngine:
         self.embed_model: str | None = None
         self.query_prefix: str = ""      # set from meta.json by _init_vector_index
         self.llm_model: str | None = None
+        # A timed-out Ollama call cannot be cancelled from Python. Allow only
+        # one in-flight call so repeated requests cannot create an unbounded
+        # number of daemon threads while an old call is still running.
+        self._llm_slots = threading.BoundedSemaphore(1)
 
         # BM25 index (built at startup from all games in SQLite)
         self._bm25 = None
@@ -711,7 +714,9 @@ class GameSearchEngine:
         if not keywords:
             keywords = raw_words[:4]
         if not keywords:
-            return random.sample(self.records, min(DEFAULT_MATCH_COUNT, len(self.records)))
+            records = self.records[:DEFAULT_MATCH_COUNT]
+            self._assign_keyword_scores(records)
+            return records
 
         def _corpus_col():
             return (
@@ -748,13 +753,42 @@ class GameSearchEngine:
                     ).fetchall()
 
             if rows:
-                return [self._row_to_record(row) for row in rows]
+                records = [self._row_to_record(row) for row in rows]
+                # SQLite does not guarantee a useful relevance order here.
+                # Score matches explicitly and break ties by app_id so the
+                # fallback is deterministic and can participate in ranking.
+                searchable = {
+                    rec.app_id: " ".join([
+                        rec.name,
+                        rec.short_description,
+                        " ".join(rec._normalize_tags(rec.raw.get("tags"))),
+                        " ".join(rec.raw.get("genres") or []),
+                    ]).lower()
+                    for rec in records
+                }
+                records.sort(
+                    key=lambda rec: (
+                        -sum(kw in searchable[rec.app_id] for kw in keywords),
+                        rec.app_id,
+                    )
+                )
+                self._assign_keyword_scores(records)
+                return records
         except Exception as e:
             print(f"Keyword search error: {e}")
 
         if self.records:
-            return random.sample(self.records, min(DEFAULT_MATCH_COUNT, len(self.records)))
+            records = self.records[:DEFAULT_MATCH_COUNT]
+            self._assign_keyword_scores(records)
+            return records
         return []
+
+    @staticmethod
+    def _assign_keyword_scores(records: list[GameRecord]) -> None:
+        """Attach deterministic fallback scores before the normal ranking pass."""
+        for rank, record in enumerate(records, 1):
+            record.raw["_rrf"] = 1.0 / (RRF_K + rank)
+        GameSearchEngine._assign_retrieval_scores(records)
 
     # ------------------------------------------------------------------
     # Ranking
@@ -949,9 +983,15 @@ class GameSearchEngine:
         # Cap at 0.15 so stacked bonuses never override semantic relevance scores.
         return min(bonus, 0.15)
 
-    @staticmethod
-    def _call_with_timeout(fn, timeout_sec: float, *args, **kwargs):
-        """Run fn(*args, **kwargs) in a thread; raise TimeoutError if too slow."""
+    def _call_with_timeout(self, fn, timeout_sec: float, *args, **kwargs):
+        """Run one call in a thread without accumulating timed-out calls."""
+        slots = getattr(self, "_llm_slots", None)
+        if slots is None:  # supports lightweight test doubles bypassing __init__
+            slots = threading.BoundedSemaphore(1)
+            self._llm_slots = slots
+        if not slots.acquire(blocking=False):
+            raise TimeoutError("another LLM call is still running")
+
         result: list[Any] = [None]
         exc: list[BaseException | None] = [None]
 
@@ -960,6 +1000,10 @@ class GameSearchEngine:
                 result[0] = fn(*args, **kwargs)
             except Exception as e:
                 exc[0] = e
+            finally:
+                # If the caller timed out, the slot is released only when the
+                # underlying call actually finishes.
+                slots.release()
 
         t = threading.Thread(target=_target, daemon=True)
         t.start()

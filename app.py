@@ -1,3 +1,4 @@
+import threading
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request
@@ -6,7 +7,18 @@ from recommender import create_search_engine
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    search_engine = create_search_engine()
+    # Lazy initialization prevents Flask's debug reloader parent process from
+    # loading FAISS, BM25, and Ollama before the serving child starts.
+    search_engine = None
+    search_engine_lock = threading.Lock()
+
+    def get_search_engine():
+        nonlocal search_engine
+        if search_engine is None:
+            with search_engine_lock:
+                if search_engine is None:
+                    search_engine = create_search_engine()
+        return search_engine
 
     @app.get("/")
     def index() -> str:
@@ -15,13 +27,15 @@ def create_app() -> Flask:
     @app.post("/api/search")
     def search() -> Any:
         payload = request.get_json(silent=True) or {}
-        query = (payload.get("query") or "").strip()
+        raw_query = payload.get("query")
+        query = raw_query.strip() if isinstance(raw_query, str) else ""
         if not query:
             return jsonify({"error": "A game description is required."}), 400
         try:
-            return jsonify(search_engine.search(query))
-        except Exception as exc:
-            return jsonify({"error": "Search failed.", "details": str(exc)}), 500
+            return jsonify(get_search_engine().search(query))
+        except Exception:
+            app.logger.exception("Search failed")
+            return jsonify({"error": "Search failed."}), 500
 
     return app
 
