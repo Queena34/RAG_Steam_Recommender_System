@@ -52,13 +52,15 @@ def retrieve_bm25(engine, query: str) -> list[str]:
 
 
 def retrieve_vector(engine, query: str) -> list[str]:
+    if not engine.embed_fn:
+        return []
     return engine._retrieve_vector_ids(query, POOL)[:CUT]
 
 
 def retrieve_rrf(engine, query: str) -> list[str]:
     lists = [
         lst for lst in (
-            engine._retrieve_vector_ids(query, POOL),
+            retrieve_vector(engine, query),
             engine._retrieve_bm25_ids(query, POOL),
         ) if lst
     ]
@@ -117,12 +119,31 @@ def retrieve_full(engine, query: str) -> list[str]:
     return ranked_ids + tail
 
 
+def retrieve_full_no_rerank(engine, query: str) -> list[str]:
+    """Production ranking with the Cross-encoder explicitly disabled."""
+    app_ids = retrieve_rrf(engine, query)
+    if not app_ids:
+        return []
+    ordered = _hydrate(engine, app_ids)
+    ranked = engine.rank_candidates(query, ordered, rerank=False)
+    ranked_ids = [rec.app_id for rec, _ in ranked]
+    ranked_set = set(ranked_ids)
+    return ranked_ids + [a for a in app_ids if a not in ranked_set]
+
+
+def retrieve_full_rerank(engine, query: str) -> list[str]:
+    """Production ranking with the Cross-encoder explicitly enabled."""
+    return retrieve_full(engine, query)
+
+
 CONFIGS = {
     "bm25": retrieve_bm25,
     "vector": retrieve_vector,
     "rrf": retrieve_rrf,
     "quality": retrieve_quality,
+    "full_no_rerank": retrieve_full_no_rerank,
     "full": retrieve_full,
+    "full_rerank": retrieve_full_rerank,
 }
 
 
@@ -163,6 +184,7 @@ def evaluate(
     started = time.perf_counter()
     for i, record in enumerate(queries, 1):
         relevant, grades = judgements(record)
+        started_query = time.perf_counter()
         try:
             retrieved = retrieve(engine, record["query"])
         except Exception as exc:  # a failing query is a zero, not a crashed run
@@ -192,8 +214,11 @@ def evaluate(
             per_query[name].append(value)
         details.append({
             "query_id": record.get("query_id"),
+            "track": record.get("track", "topical" if "grades" in record else "knownitem"),
+            "category": record.get("category"),
             "gold_appid": record.get("gold_appid"),
             "n_retrieved": len(retrieved),
+            "latency_ms": round((time.perf_counter() - started_query) * 1000, 2),
             **scores,
         })
 

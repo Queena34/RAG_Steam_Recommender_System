@@ -129,7 +129,7 @@ Cross-encoder / 数值排序
 - 多条件查询的逐条件满足率；
 - 过度过滤比例不高于预设阈值。
 
-## 5. P2：真正的 Cross-encoder 重排（技术验证已完成：2026-08-28；质量评测待完成）
+## 5. P2：真正的 Cross-encoder 重排（技术验证已完成：2026-08-28；质量评测进行中）
 
 ### 5.1 目标位置
 
@@ -159,6 +159,10 @@ LLM：10 → 5 + 解释
 - 记录 p50/p95 延迟；
 - 证明排序结果确实发生变化，而不是单纯截断；
 - 对多子句查询进行单独评测。
+
+2026-08-28 的 20 条 Known-item 配对评测显示 Recall@50 保持不变，但 nDCG@10 从 0.047 降至 0.019，MRR 从 0.031 降至 0.014；因此模型暂时保持 opt-in。P3 评测明细见 [`docs/validation/P3-offline-evaluation-report.md`](docs/validation/P3-offline-evaluation-report.md)。
+
+生产响应已增加 `candidate_count`、`retrieval_latency_ms`、`reranker_latency_ms`、`reranker_status`、`reranker_applied` 和 `total_latency_ms`，并支持通过 `RAGLOOKER_RERANKER_ENABLED=0` 做无重排对照。
 
 ## 6. P2：证据约束与事实性生成
 
@@ -282,7 +286,7 @@ P0 工程可靠性
   ↓
 P1 结构化查询理解与硬约束
   ↓
-P2 Cross-encoder 重排
+P2 Cross-encoder 重排：技术验证通过；质量门禁待通过（见 `eval/results/p3_cross_encoder_report.md`）
   ↓
 P2 证据约束生成
   ↓

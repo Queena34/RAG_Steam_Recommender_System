@@ -92,6 +92,17 @@ try:
     check("cross-encoder returns one score per candidate", reranked is not None and len(reranked) == 2)
     check("cross-encoder scores are normalized", reranked is not None and 0 < reranked[0][1] < 1)
 
+    ranking_telemetry = {}
+    ranked = engine.rank_candidates(
+        "farming game",
+        [GameRecord("2", {"name": "Farm Horror", "positive": 90, "negative": 10}),
+         GameRecord("3", {"name": "Puzzle Farm", "positive": 100, "negative": 10})],
+        rerank=True,
+        telemetry=ranking_telemetry,
+    )
+    check("ranking telemetry records reranker latency", "reranker_latency_ms" in ranking_telemetry)
+    check("ranking telemetry records applied state", ranking_telemetry["reranker_applied"] is True)
+
     engine.reranker_session = None
     check("missing cross-encoder degrades cleanly", engine._rerank_cross_encoder("q", []) is None)
 

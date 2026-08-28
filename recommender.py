@@ -6,6 +6,7 @@ import os
 import re
 import sqlite3
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,9 @@ DB_PATH = Path(os.environ.get("RAGLOOKER_DB_PATH", BASE_DIR / "steam_games_revie
 INDEX_DIR = Path(os.environ.get("RAGLOOKER_INDEX_DIR", BASE_DIR / "vector_index"))
 _reranker_dir = os.environ.get("RAGLOOKER_RERANKER_MODEL_DIR")
 RERANKER_MODEL_DIR = Path(_reranker_dir) if _reranker_dir else None
+RERANKER_ENABLED = os.environ.get("RAGLOOKER_RERANKER_ENABLED", "1").lower() not in {
+    "0", "false", "no", "off",
+}
 
 DEFAULT_MATCH_COUNT = 5
 RETRIEVAL_COUNT = 50        # candidates kept after fusion, before re-ranking
@@ -483,9 +487,15 @@ class GameSearchEngine:
     # ------------------------------------------------------------------
 
     def search(self, query: str) -> dict[str, Any]:
+        started = time.perf_counter()
         intent = self._parse_query_intent(query)
+        retrieval_started = time.perf_counter()
         candidates = self.retrieve_candidates(query, intent=intent)
-        ranked_matches = self.rank_candidates(query, candidates, intent=intent)
+        retrieval_ms = (time.perf_counter() - retrieval_started) * 1000
+        ranking_telemetry: dict[str, Any] = {}
+        ranked_matches = self.rank_candidates(
+            query, candidates, intent=intent, telemetry=ranking_telemetry
+        )
 
         has_vector = bool(self.faiss_index and self.faiss_index.ntotal > 0 and self.embed_fn)
         has_bm25 = bool(self._bm25)
@@ -541,9 +551,13 @@ class GameSearchEngine:
                 "reranker_model": self.reranker_model or "none",
                 "reranker_status": getattr(self, "reranker_status", "disabled"),
                 "reranker_applied": any("_ce_score" in rec.raw for rec, _ in ranked_matches),
+                "candidate_count": len(candidates),
+                "retrieval_latency_ms": round(retrieval_ms, 2),
+                **ranking_telemetry,
                 **telemetry,
                 "query_parse_mode": intent["parse_mode"],
                 "hard_filter_count": intent["hard_filter_count"],
+                "total_latency_ms": round((time.perf_counter() - started) * 1000, 2),
             },
         }
 
@@ -713,16 +727,19 @@ class GameSearchEngine:
 
     @staticmethod
     def _reranker_text(record: GameRecord) -> str:
-        tags = ", ".join(record._normalize_tags(record.raw.get("tags"))[:8])
+        tags = ", ".join(record._normalize_tags(record.raw.get("tags"))[:20])
+        genres = ", ".join(str(g) for g in (record.raw.get("genres") or [])[:8])
         categories = record.raw.get("categories") or []
         modes = ", ".join(str(c) for c in categories if c in {
             "Single-player", "Multi-player", "Co-op", "Online Co-op", "PvP",
         })
         return (
             f"Title: {record.name}\n"
+            f"Genres: {genres}\n"
             f"Tags: {tags}\n"
             f"Modes: {modes}\n"
-            f"Description: {record.short_description[:200]}"
+            f"Description: {record.short_description[:300]}\n"
+            f"Player review summary: {str(record.raw.get('review_summary') or '')[:500]}"
         )
 
     def _rerank_cross_encoder(
@@ -1112,6 +1129,8 @@ class GameSearchEngine:
     def rank_candidates(
         self, query: str, candidates: list[GameRecord],
         intent: dict[str, Any] | None = None,
+        rerank: bool | None = None,
+        telemetry: dict[str, Any] | None = None,
     ) -> list[tuple[GameRecord, float]]:
         """Re-rank fused candidates: hard filters, preference bonus, diversity.
 
@@ -1153,7 +1172,14 @@ class GameSearchEngine:
         # Cross-encoder relevance replaces the RRF relevance term when an
         # optional ONNX model is available. If loading or scoring fails, the
         # existing `_score` values remain the deterministic fallback.
-        cross_scores = self._rerank_cross_encoder(query, filtered)
+        rerank = RERANKER_ENABLED if rerank is None else rerank
+        rerank_started = time.perf_counter()
+        cross_scores = self._rerank_cross_encoder(query, filtered) if rerank else None
+        if telemetry is not None:
+            telemetry["reranker_latency_ms"] = round(
+                (time.perf_counter() - rerank_started) * 1000, 2
+            )
+            telemetry["reranker_applied"] = cross_scores is not None
         if cross_scores is not None:
             for record, relevance in cross_scores:
                 quality = GameSearchEngine._quality_score(record)
