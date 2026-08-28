@@ -69,6 +69,26 @@ BM25_CORPUS_VERSION = 2
 # At 150 the timeout fired on 3 of 15 runs and silently returned ranking order
 # instead of the generated shortlist.
 LLM_TIMEOUT = 360
+QUERY_INTENT_TIMEOUT = 30
+
+# Query-understanding output is deliberately narrower than the eventual
+# recommendation schema. Only catalogue predicates are treated as hard
+# constraints; natural-language exclusions remain semantic signals.
+QUERY_INTENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "semantic_query": {"type": "string"},
+        "price_max": {"type": ["number", "null"]},
+        "platforms": {"type": "array", "items": {"type": "string"}},
+        "modes": {"type": "array", "items": {"type": "string"}},
+        "exclude_modes": {"type": "array", "items": {"type": "string"}},
+        "exclude_terms": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        "semantic_query", "price_max", "platforms", "modes",
+        "exclude_modes", "exclude_terms",
+    ],
+}
 
 # Ollama constrains decoding to this schema, so malformed output cannot be
 # generated rather than merely being discouraged. The previous implementation
@@ -455,8 +475,9 @@ class GameSearchEngine:
     # ------------------------------------------------------------------
 
     def search(self, query: str) -> dict[str, Any]:
-        candidates = self.retrieve_candidates(query)
-        ranked_matches = self.rank_candidates(query, candidates)
+        intent = self._parse_query_intent(query)
+        candidates = self.retrieve_candidates(query, intent=intent)
+        ranked_matches = self.rank_candidates(query, candidates, intent=intent)
 
         has_vector = bool(self.faiss_index and self.faiss_index.ntotal > 0 and self.embed_fn)
         has_bm25 = bool(self._bm25)
@@ -510,12 +531,173 @@ class GameSearchEngine:
                 "embed_model": self.embed_model or "none",
                 "llm_model": self.llm_model or "none",
                 **telemetry,
+                "query_parse_mode": intent["parse_mode"],
+                "hard_filter_count": intent["hard_filter_count"],
             },
         }
 
     # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _empty_query_intent(query: str, parse_mode: str = "rules") -> dict[str, Any]:
+        return {
+            "semantic_query": query,
+            "price_max": None,
+            "platforms": [],
+            "modes": [],
+            "exclude_modes": [],
+            "exclude_terms": [],
+            "parse_mode": parse_mode,
+            "hard_filter_count": 0,
+        }
+
+    @staticmethod
+    def _rule_query_intent(query: str) -> dict[str, Any]:
+        """Extract only catalogue-verifiable constraints without an LLM."""
+        lowered = query.lower()
+        intent = GameSearchEngine._empty_query_intent(query)
+
+        def wb(word: str) -> bool:
+            return bool(re.search(r"\b" + re.escape(word) + r"\b", lowered))
+
+        if (wb("free") and not wb("roam")) or "no cost" in lowered or "free to play" in lowered:
+            intent["price_max"] = 0.0
+        elif wb("cheap") or wb("budget") or wb("inexpensive") or "low price" in lowered:
+            intent["price_max"] = 10.0
+
+        if wb("windows") or wb("pc"):
+            intent["platforms"].append("windows")
+        if wb("mac"):
+            intent["platforms"].append("mac")
+        if wb("linux") or "steam deck" in lowered:
+            intent["platforms"].append("linux")
+
+        if re.search(r"\b(single[- ]player|solo only|single player only)\b", lowered):
+            intent["modes"].append("single-player")
+        if re.search(r"\b(co[- ]?op|cooperative|play with friends)\b", lowered) and not no_coop:
+            intent["modes"].append("co-op")
+        no_multiplayer = bool(
+            re.search(r"\b(no|without|avoid|excluding)\s+(multiplayer|pvp)\b", lowered)
+        )
+        no_coop = bool(
+            re.search(r"\b(no|without|avoid|excluding)\s+co[- ]?op\b", lowered)
+        )
+        if (wb("multiplayer") or wb("pvp")) and not no_multiplayer:
+            intent["modes"].append("multi-player")
+
+        if no_multiplayer or no_coop:
+            intent["exclude_modes"].append("multiplayer")
+        for term in ("combat", "farming", "cute", "horror"):
+            if re.search(r"\b(no|without|avoid|excluding)\s+" + term + r"\b", lowered):
+                intent["exclude_terms"].append(term)
+
+        intent["hard_filter_count"] = (
+            (1 if intent["price_max"] is not None else 0)
+            + len(intent["platforms"])
+            + len(intent["modes"])
+            + len(intent["exclude_modes"])
+        )
+        return intent
+
+    @staticmethod
+    def _normalize_query_intent(query: str, data: Any) -> dict[str, Any] | None:
+        if not isinstance(data, dict):
+            return None
+        base = GameSearchEngine._rule_query_intent(query)
+        semantic = data.get("semantic_query")
+        if not isinstance(semantic, str) or not semantic.strip():
+            semantic = base["semantic_query"]
+
+        allowed_platforms = {"windows", "mac", "linux"}
+        allowed_modes = {"single-player", "multi-player", "co-op"}
+        platforms = [p for p in data.get("platforms", []) if p in allowed_platforms]
+        modes = [m for m in data.get("modes", []) if m in allowed_modes]
+        excludes = [m for m in data.get("exclude_modes", []) if m == "multiplayer"]
+        price = data.get("price_max")
+        if not isinstance(price, (int, float)) or price < 0 or price > 10000:
+            price = base["price_max"]
+
+        result = {
+            "semantic_query": semantic.strip(),
+            "price_max": float(price) if price is not None else None,
+            "platforms": list(dict.fromkeys(platforms or base["platforms"])),
+            "modes": list(dict.fromkeys(modes or base["modes"])),
+            "exclude_modes": list(dict.fromkeys(excludes or base["exclude_modes"])),
+            "exclude_terms": [str(t).lower() for t in data.get("exclude_terms", []) if isinstance(t, str)],
+            "parse_mode": "llm",
+        }
+        result["hard_filter_count"] = (
+            (1 if result["price_max"] is not None else 0)
+            + len(result["platforms"])
+            + len(result["modes"])
+            + len(result["exclude_modes"])
+        )
+        return result
+
+    def _parse_query_intent(self, query: str) -> dict[str, Any]:
+        rules = self._rule_query_intent(query)
+        if not self.llm_model:
+            return rules
+        prompt = (
+            f'Parse this Steam game request into JSON: "{query}"\n'
+            "Use only catalogue-verifiable constraints. Treat price, platform, "
+            "single-player/co-op/multiplayer as hard constraints. Keep mood, "
+            "theme, combat, and other natural-language exclusions in exclude_terms.\n"
+            "Return semantic_query plus price_max, platforms, modes, "
+            "exclude_modes, and exclude_terms. Do not invent constraints."
+        )
+        try:
+            data = self._call_with_timeout(
+                self._call_query_intent, QUERY_INTENT_TIMEOUT, prompt
+            )
+            normalized = self._normalize_query_intent(query, data)
+            if normalized is not None:
+                return normalized
+        except Exception as exc:
+            print(f"Query intent parsing failed: {exc}; using rules")
+        return rules
+
+    def _call_query_intent(self, prompt: str) -> dict[str, Any] | None:
+        import ollama
+        response = ollama.generate(
+            model=self.llm_model,
+            prompt=prompt,
+            format=QUERY_INTENT_SCHEMA,
+            options={"temperature": 0.0, "num_predict": 300},
+        )
+        data = json.loads(response.response)
+        return data if isinstance(data, dict) else None
+
+    def _hard_filter_ids(self, intent: dict[str, Any]) -> set[str] | None:
+        if not intent["hard_filter_count"]:
+            return None
+        clauses = ["name IS NOT NULL"]
+        params: list[Any] = []
+        if intent["price_max"] is not None:
+            clauses.append("price IS NOT NULL AND price <= ?")
+            params.append(intent["price_max"])
+        if intent["platforms"]:
+            clauses.append("(" + " OR ".join(f"{p} = 1" for p in intent["platforms"]) + ")")
+        mode_patterns = {
+            "single-player": "%Single-player%",
+            "multi-player": "%Multi-player%",
+            "co-op": "%Co-op%",
+        }
+        for mode in intent["modes"]:
+            clauses.append("categories_json LIKE ?")
+            params.append(mode_patterns[mode])
+        if "multiplayer" in intent["exclude_modes"]:
+            clauses.append("categories_json NOT LIKE '%Multi-player%'")
+            clauses.append("categories_json NOT LIKE '%Co-op%'")
+            clauses.append("categories_json NOT LIKE '%PvP%'")
+
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT appid FROM games WHERE " + " AND ".join(clauses), params
+            ).fetchall()
+        return {str(row[0]) for row in rows}
 
     def _expand_query_with_llm(self, query: str) -> str:
         if not self.llm_model:
@@ -546,7 +728,9 @@ class GameSearchEngine:
             print(f"Query expansion failed: {e}, using original query")
             return query
 
-    def retrieve_candidates(self, query: str) -> list[GameRecord]:
+    def retrieve_candidates(
+        self, query: str, intent: dict[str, Any] | None = None
+    ) -> list[GameRecord]:
         """Hybrid retrieval: FAISS (semantic) + BM25 (lexical), fused with RRF.
 
         Both retrievers run on every query and each returns a ranked list of
@@ -562,25 +746,34 @@ class GameSearchEngine:
         If only one retriever is available its ranking is used unchanged; if
         neither is, we fall back to the SQLite LIKE search.
         """
-        expanded_query = self._expand_query_with_llm(query)
+        intent = intent or self._parse_query_intent(query)
+        allowed_ids = self._hard_filter_ids(intent)
+        if allowed_ids is not None and not allowed_ids:
+            return []
+
+        expanded_query = self._expand_query_with_llm(intent["semantic_query"])
 
         rank_lists: list[list[str]] = []
 
         if self.faiss_index and self.embed_fn and self.faiss_index.ntotal > 0:
             try:
-                rank_lists.append(self._retrieve_vector_ids(expanded_query, RETRIEVAL_POOL))
+                rank_lists.append(
+                    self._retrieve_vector_ids(expanded_query, RETRIEVAL_POOL, allowed_ids)
+                )
             except Exception as e:
                 print(f"Vector search error: {e}")
 
         if self._bm25:
             try:
-                rank_lists.append(self._retrieve_bm25_ids(expanded_query, RETRIEVAL_POOL))
+                rank_lists.append(
+                    self._retrieve_bm25_ids(expanded_query, RETRIEVAL_POOL, allowed_ids)
+                )
             except Exception as e:
                 print(f"BM25 search error: {e}")
 
         rank_lists = [lst for lst in rank_lists if lst]
         if not rank_lists:
-            return self._retrieve_keyword(expanded_query)
+            return self._retrieve_keyword(expanded_query, intent)
 
         fused = self._rrf_fuse(rank_lists, RRF_K)[:RETRIEVAL_COUNT]
         app_ids = [app_id for app_id, _ in fused]
@@ -676,17 +869,28 @@ class GameSearchEngine:
     # Individual retrievers (return ranked app_ids, no DB round-trip)
     # ------------------------------------------------------------------
 
-    def _retrieve_vector_ids(self, query: str, k: int) -> list[str]:
+    def _retrieve_vector_ids(
+        self, query: str, k: int, allowed_ids: set[str] | None = None
+    ) -> list[str]:
         import faiss
 
         q_vec = np.array([self.embed_fn(self.query_prefix + query)], dtype=np.float32)
         faiss.normalize_L2(q_vec)
 
-        n = min(k, self.faiss_index.ntotal)
+        # IndexFlatIP is exact, so search the full index when a hard filter is
+        # active and keep only permitted IDs. This preserves recall under a
+        # filter instead of filtering an arbitrary top-k prefix.
+        n = self.faiss_index.ntotal if allowed_ids is not None else min(k, self.faiss_index.ntotal)
         _scores, indices = self.faiss_index.search(q_vec, n)
-        return [self.faiss_app_ids[i] for i in indices[0] if i >= 0]
+        result = [
+            self.faiss_app_ids[i] for i in indices[0]
+            if i >= 0 and (allowed_ids is None or self.faiss_app_ids[i] in allowed_ids)
+        ]
+        return result[:k]
 
-    def _retrieve_bm25_ids(self, query: str, k: int) -> list[str]:
+    def _retrieve_bm25_ids(
+        self, query: str, k: int, allowed_ids: set[str] | None = None
+    ) -> list[str]:
         tokenize = getattr(
             self,
             "_bm25_tokenize",
@@ -697,8 +901,16 @@ class GameSearchEngine:
             return []
 
         scores = self._bm25.get_scores(tokens)
+        if allowed_ids is not None:
+            scores = np.array([
+                score if app_id in allowed_ids else -np.inf
+                for app_id, score in zip(self._bm25_app_ids, scores)
+            ])
         top_indices = np.argsort(scores)[::-1][:k]
-        return [self._bm25_app_ids[i] for i in top_indices if scores[i] > 0]
+        return [
+            self._bm25_app_ids[i] for i in top_indices
+            if np.isfinite(scores[i]) and scores[i] > 0
+        ]
 
     # Common words that add no search value
     _STOP_WORDS = frozenset({
@@ -707,7 +919,9 @@ class GameSearchEngine:
         "can", "all", "good", "great", "best", "some", "more",
     })
 
-    def _retrieve_keyword(self, query: str) -> list[GameRecord]:
+    def _retrieve_keyword(
+        self, query: str, intent: dict[str, Any] | None = None
+    ) -> list[GameRecord]:
         """SQLite LIKE search: AND-first (precise), OR fallback (broad)."""
         raw_words = [w.lower() for w in re.split(r"\W+", query) if len(w) > 2]
         keywords = [w for w in raw_words if w not in self._STOP_WORDS][:6]
@@ -736,11 +950,19 @@ class GameSearchEngine:
                            genres_json, tags_json, user_score, positive, negative
                     FROM games WHERE name IS NOT NULL
                 """
+                hard_ids = self._hard_filter_ids(intent) if intent else None
+                if hard_ids is not None:
+                    if not hard_ids:
+                        return []
+                    # Keep the fallback query within SQLite's variable limit by
+                    # applying structured predicates through the same helper.
+                    # The broad ID set is enforced after hydration below.
+                limit_suffix = "" if hard_ids is not None else f" LIMIT {RETRIEVAL_COUNT}"
                 # Try AND first (all keywords must appear)
                 and_cond = " AND ".join(f"{_corpus_col()} LIKE ?" for _ in keywords)
                 params = [f"%{kw}%" for kw in keywords]
                 rows = conn.execute(
-                    f"{base_select} AND ({and_cond}) LIMIT {RETRIEVAL_COUNT}",
+                    f"{base_select} AND ({and_cond}){limit_suffix}",
                     params,
                 ).fetchall()
 
@@ -748,12 +970,14 @@ class GameSearchEngine:
                 if len(rows) < DEFAULT_MATCH_COUNT:
                     or_cond = " OR ".join(f"{_corpus_col()} LIKE ?" for _ in keywords)
                     rows = conn.execute(
-                        f"{base_select} AND ({or_cond}) LIMIT {RETRIEVAL_COUNT}",
+                        f"{base_select} AND ({or_cond}){limit_suffix}",
                         params,
                     ).fetchall()
 
             if rows:
                 records = [self._row_to_record(row) for row in rows]
+                if hard_ids is not None:
+                    records = [rec for rec in records if rec.app_id in hard_ids]
                 # SQLite does not guarantee a useful relevance order here.
                 # Score matches explicitly and break ties by app_id so the
                 # fallback is deterministic and can participate in ranking.

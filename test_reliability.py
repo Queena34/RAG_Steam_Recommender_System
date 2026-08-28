@@ -44,9 +44,9 @@ def make_db() -> Path:
         "INSERT INTO games VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (3, "Puzzle Farm", "relaxing farming puzzle", "2020", 5, "", 1, 0, 0,
-             "[]", "[]", "[]", '["Simulation"]', '{"Farming Sim": 1}', 0, 100, 10),
+            "[]", "[]", '["Single-player"]', '["Simulation"]', '{"Farming Sim": 1}', 0, 100, 10),
             (2, "Farm Horror", "farming horror survival", "2021", 5, "", 1, 0, 0,
-             "[]", "[]", "[]", '["Horror"]', '{"Farming Sim": 1}', 0, 90, 10),
+            "[]", "[]", '["Multi-player"]', '["Horror"]', '{"Farming Sim": 1}', 0, 90, 10),
         ],
     )
     conn.commit()
@@ -59,6 +59,17 @@ try:
     engine = object.__new__(GameSearchEngine)
     engine.db_path = db
     engine.records = []
+    intent = engine._rule_query_intent("free Linux single-player game without multiplayer")
+    check("rules extract price, platform and mode constraints", (
+        intent["price_max"] == 0.0
+        and intent["platforms"] == ["linux"]
+        and intent["modes"] == ["single-player"]
+        and intent["exclude_modes"] == ["multiplayer"]
+    ))
+    allowed = engine._hard_filter_ids(intent)
+    check("hard filters produce an exact catalogue allow-list", allowed == set())
+    single_intent = engine._rule_query_intent("single-player farming game")
+    check("single-player filter reaches the database", engine._hard_filter_ids(single_intent) == {"3"})
     result = engine._retrieve_keyword("farming horror")
     check("keyword fallback prioritizes the all-term match", [r.app_id for r in result] == ["2", "3"])
     check("keyword fallback assigns ranking scores", all("_score" in r.raw for r in result))
