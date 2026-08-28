@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
 
 import app as app_module
@@ -70,6 +71,30 @@ try:
     check("hard filters produce an exact catalogue allow-list", allowed == set())
     single_intent = engine._rule_query_intent("single-player farming game")
     check("single-player filter reaches the database", engine._hard_filter_ids(single_intent) == {"3"})
+
+    class FakeTokenizer:
+        def encode(self, query, document):
+            n = 3 if "Puzzle" in document else 2
+            return SimpleNamespace(ids=list(range(n)), attention_mask=[1] * n, type_ids=[0] * n)
+
+    class FakeSession:
+        def get_inputs(self):
+            return [SimpleNamespace(name="input_ids"), SimpleNamespace(name="attention_mask")]
+
+        def run(self, _, inputs):
+            return [[2.0, 1.0]]
+
+    engine.reranker_tokenizer = FakeTokenizer()
+    engine.reranker_session = FakeSession()
+    reranked = engine._rerank_cross_encoder(
+        "farming game", [GameRecord("2", {"name": "Farm Horror"}), GameRecord("3", {"name": "Puzzle Farm"})]
+    )
+    check("cross-encoder returns one score per candidate", reranked is not None and len(reranked) == 2)
+    check("cross-encoder scores are normalized", reranked is not None and 0 < reranked[0][1] < 1)
+
+    engine.reranker_session = None
+    check("missing cross-encoder degrades cleanly", engine._rerank_cross_encoder("q", []) is None)
+
     result = engine._retrieve_keyword("farming horror")
     check("keyword fallback prioritizes the all-term match", [r.app_id for r in result] == ["2", "3"])
     check("keyword fallback assigns ranking scores", all("_score" in r.raw for r in result))

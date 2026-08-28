@@ -15,6 +15,8 @@ import numpy as np
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("RAGLOOKER_DB_PATH", BASE_DIR / "steam_games_reviews_25.sqlite"))
 INDEX_DIR = Path(os.environ.get("RAGLOOKER_INDEX_DIR", BASE_DIR / "vector_index"))
+_reranker_dir = os.environ.get("RAGLOOKER_RERANKER_MODEL_DIR")
+RERANKER_MODEL_DIR = Path(_reranker_dir) if _reranker_dir else None
 
 DEFAULT_MATCH_COUNT = 5
 RETRIEVAL_COUNT = 50        # candidates kept after fusion, before re-ranking
@@ -70,6 +72,7 @@ BM25_CORPUS_VERSION = 2
 # instead of the generated shortlist.
 LLM_TIMEOUT = 360
 QUERY_INTENT_TIMEOUT = 30
+RERANKER_MAX_CANDIDATES = RETRIEVAL_COUNT
 
 # Query-understanding output is deliberately narrower than the eventual
 # recommendation schema. Only catalogue predicates are treated as hard
@@ -204,6 +207,10 @@ class GameSearchEngine:
         # one in-flight call so repeated requests cannot create an unbounded
         # number of daemon threads while an old call is still running.
         self._llm_slots = threading.BoundedSemaphore(1)
+        self.reranker_session = None
+        self.reranker_tokenizer = None
+        self.reranker_model: str | None = None
+        self.reranker_status = "disabled"
 
         # BM25 index (built at startup from all games in SQLite)
         self._bm25 = None
@@ -215,6 +222,7 @@ class GameSearchEngine:
         self._init_vector_index()
         self._init_embed_fn()
         self._init_llm()
+        self._init_reranker()
         self._init_bm25()
 
         if self.faiss_index is None or self.faiss_index.ntotal == 0:
@@ -530,6 +538,9 @@ class GameSearchEngine:
                 "retrieval_mode": mode,
                 "embed_model": self.embed_model or "none",
                 "llm_model": self.llm_model or "none",
+                "reranker_model": self.reranker_model or "none",
+                "reranker_status": getattr(self, "reranker_status", "disabled"),
+                "reranker_applied": any("_ce_score" in rec.raw for rec, _ in ranked_matches),
                 **telemetry,
                 "query_parse_mode": intent["parse_mode"],
                 "hard_filter_count": intent["hard_filter_count"],
@@ -574,16 +585,17 @@ class GameSearchEngine:
         if wb("linux") or "steam deck" in lowered:
             intent["platforms"].append("linux")
 
-        if re.search(r"\b(single[- ]player|solo only|single player only)\b", lowered):
-            intent["modes"].append("single-player")
-        if re.search(r"\b(co[- ]?op|cooperative|play with friends)\b", lowered) and not no_coop:
-            intent["modes"].append("co-op")
         no_multiplayer = bool(
             re.search(r"\b(no|without|avoid|excluding)\s+(multiplayer|pvp)\b", lowered)
         )
         no_coop = bool(
             re.search(r"\b(no|without|avoid|excluding)\s+co[- ]?op\b", lowered)
         )
+
+        if re.search(r"\b(single[- ]player|solo only|single player only)\b", lowered):
+            intent["modes"].append("single-player")
+        if re.search(r"\b(co[- ]?op|cooperative|play with friends)\b", lowered) and not no_coop:
+            intent["modes"].append("co-op")
         if (wb("multiplayer") or wb("pvp")) and not no_multiplayer:
             intent["modes"].append("multi-player")
 
@@ -669,6 +681,85 @@ class GameSearchEngine:
         )
         data = json.loads(response.response)
         return data if isinstance(data, dict) else None
+
+    def _init_reranker(self) -> None:
+        """Load an optional pre-exported ONNX cross-encoder.
+
+        The model is intentionally opt-in because the repository does not
+        contain model weights. Set RAGLOOKER_RERANKER_MODEL_DIR to a directory
+        containing model.onnx and tokenizer.json. Missing optional dependencies
+        or weights leave the existing ranking path available.
+        """
+        if RERANKER_MODEL_DIR is None:
+            return
+        model_path = RERANKER_MODEL_DIR / "model.onnx"
+        tokenizer_path = RERANKER_MODEL_DIR / "tokenizer.json"
+        if not model_path.exists() or not tokenizer_path.exists():
+            self.reranker_status = "unavailable"
+            print(f"Cross-encoder files missing in {RERANKER_MODEL_DIR}")
+            return
+        try:
+            import onnxruntime as ort
+            from tokenizers import Tokenizer
+
+            self.reranker_session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+            self.reranker_tokenizer = Tokenizer.from_file(str(tokenizer_path))
+            self.reranker_model = str(model_path)
+            self.reranker_status = "available"
+            print(f"Cross-encoder loaded: {model_path}")
+        except Exception as exc:
+            self.reranker_status = "unavailable"
+            print(f"Cross-encoder unavailable: {exc}")
+
+    @staticmethod
+    def _reranker_text(record: GameRecord) -> str:
+        tags = ", ".join(record._normalize_tags(record.raw.get("tags"))[:8])
+        categories = record.raw.get("categories") or []
+        modes = ", ".join(str(c) for c in categories if c in {
+            "Single-player", "Multi-player", "Co-op", "Online Co-op", "PvP",
+        })
+        return (
+            f"Title: {record.name}\n"
+            f"Tags: {tags}\n"
+            f"Modes: {modes}\n"
+            f"Description: {record.short_description[:200]}"
+        )
+
+    def _rerank_cross_encoder(
+        self, query: str, candidates: list[GameRecord]
+    ) -> list[tuple[GameRecord, float]] | None:
+        """Score query/candidate pairs with the optional ONNX cross-encoder."""
+        session = getattr(self, "reranker_session", None)
+        tokenizer = getattr(self, "reranker_tokenizer", None)
+        if session is None or tokenizer is None or not candidates:
+            return None
+        try:
+            encoded = [tokenizer.encode(query, self._reranker_text(rec)) for rec in candidates[:RERANKER_MAX_CANDIDATES]]
+            max_len = min(512, max(len(item.ids) for item in encoded))
+            input_ids = np.zeros((len(encoded), max_len), dtype=np.int64)
+            attention = np.zeros((len(encoded), max_len), dtype=np.int64)
+            token_types = np.zeros((len(encoded), max_len), dtype=np.int64)
+            for i, item in enumerate(encoded):
+                ids = item.ids[:max_len]
+                mask = item.attention_mask[:max_len]
+                types = (item.type_ids or [0] * len(item.ids))[:max_len]
+                input_ids[i, :len(ids)] = ids
+                attention[i, :len(mask)] = mask
+                token_types[i, :len(types)] = types
+
+            names = {input_.name for input_ in session.get_inputs()}
+            inputs = {"input_ids": input_ids, "attention_mask": attention}
+            if "token_type_ids" in names:
+                inputs["token_type_ids"] = token_types
+            raw_scores = np.asarray(session.run(None, inputs)[0]).reshape(-1)
+            if len(raw_scores) != len(encoded):
+                raise ValueError("cross-encoder returned an unexpected score count")
+            scores = 1.0 / (1.0 + np.exp(-np.clip(raw_scores, -40, 40)))
+            return list(zip(candidates[:len(encoded)], scores.astype(float).tolist()))
+        except Exception as exc:
+            self.reranker_status = "error"
+            print(f"Cross-encoder scoring failed: {exc}; using existing ranking")
+            return None
 
     def _hard_filter_ids(self, intent: dict[str, Any]) -> set[str] | None:
         if not intent["hard_filter_count"]:
@@ -1019,7 +1110,8 @@ class GameSearchEngine:
     # ------------------------------------------------------------------
 
     def rank_candidates(
-        self, query: str, candidates: list[GameRecord]
+        self, query: str, candidates: list[GameRecord],
+        intent: dict[str, Any] | None = None,
     ) -> list[tuple[GameRecord, float]]:
         """Re-rank fused candidates: hard filters, preference bonus, diversity.
 
@@ -1057,6 +1149,18 @@ class GameSearchEngine:
                 platform_candidates = [r for r in filtered if r.raw.get(platform)]
                 if platform_candidates:  # only apply filter if it doesn't empty the list
                     filtered = platform_candidates
+
+        # Cross-encoder relevance replaces the RRF relevance term when an
+        # optional ONNX model is available. If loading or scoring fails, the
+        # existing `_score` values remain the deterministic fallback.
+        cross_scores = self._rerank_cross_encoder(query, filtered)
+        if cross_scores is not None:
+            for record, relevance in cross_scores:
+                quality = GameSearchEngine._quality_score(record)
+                record.raw["_ce_score"] = relevance
+                record.raw["_relevance"] = relevance
+                record.raw["_quality"] = quality
+                record.raw["_score"] = RELEVANCE_WEIGHT * relevance + QUALITY_WEIGHT * quality
 
         ranked = sorted(
             [

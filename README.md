@@ -45,6 +45,8 @@ Flask API → Web Frontend
 
 Both FAISS and BM25 run when available. Their top-100 ranked lists are fused with RRF, then reduced to 50 candidates. If one retriever is unavailable, the other is used; if neither is available, SQLite `LIKE` search is used. LLM generation has a structured-output retry and a plain-text fallback.
 
+An optional ONNX Cross-encoder can rerank the 50 fused candidates before the final score-based ranking. Set `RAGLOOKER_RERANKER_MODEL_DIR` to a directory containing a pre-exported `model.onnx` and `tokenizer.json`; if the model is missing or fails, the API reports the status and uses the deterministic ranking path.
+
 ---
 
 ## Repository Structure

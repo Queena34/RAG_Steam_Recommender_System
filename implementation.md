@@ -33,7 +33,7 @@ User query (natural language)
         │
         ▼
 [Ranking]  ── applies explicit free/platform filters, preference bonuses,
-        │      review-aware quality ranking and diversity; keeps top-10
+        │      optional ONNX Cross-encoder, quality ranking and diversity; keeps top-10
         │
         ▼
 [Answer Generation]  ── schema-constrained LLM selects up to five app_ids and
@@ -73,7 +73,8 @@ Calls structured generation inside a 360-second timeout thread. The LLM receives
 | Web framework | Flask 3.x | HTTP server and routing |
 | Vector index | FAISS (`faiss-cpu`) | Exact inner-product search over normalized game embeddings |
 | Embedding model | `nomic-embed-text` via Ollama | Converts text to 768-d vectors for semantic search |
-| LLM | `phi4-mini` (or any available Ollama model) | Query expansion, answer generation, optional re-ranking |
+| LLM | `phi4-mini` (or any available Ollama model) | Query intent parsing, query expansion and answer generation |
+| Cross-encoder | Optional ONNX Runtime + `tokenizers` | Reranks up to 50 fused candidates; falls back when unavailable |
 | Lexical search | `rank-bm25` + NLTK | Cached BM25Okapi corpus, run in parallel with FAISS |
 | Database | SQLite (`steam_games_reviews_25.sqlite`) | Stores 39,176 game records and 7,679,845 reviews |
 | Numerical compute | NumPy | Vector normalisation and score blending |
@@ -96,6 +97,8 @@ The index is built offline and only needs to be run once (or resumed if interrup
 The resulting `vector_index/` directory contains:
 - `index.faiss` — the serialised FAISS index
 - `meta.json` — ordered list of `app_ids` and index metadata
+
+To enable Cross-encoder reranking, provide a pre-exported ONNX model directory containing `model.onnx` and `tokenizer.json`, then set `RAGLOOKER_RERANKER_MODEL_DIR`. The API metadata exposes `reranker_status` and `reranker_applied` so a missing model cannot fail silently.
 
 ---
 
@@ -164,8 +167,6 @@ If you want more fighting but still a strong horror atmosphere, this is a top ch
 
 Best open-world survival with horror flavor: Sons Of The Forest
 This is less “tight corridor terror” and more “craft, build, and survive in a horrifying wilderness.” Best if you want survival systems first and horror second.
-
-
 
 
 

@@ -129,11 +129,11 @@ Cross-encoder / 数值排序
 - 多条件查询的逐条件满足率；
 - 过度过滤比例不高于预设阈值。
 
-## 5. P2：真正的 Cross-encoder 重排
+## 5. P2：真正的 Cross-encoder 重排（代码已接入：2026-08-28；模型验证待完成）
 
 ### 5.1 目标位置
 
-Cross-encoder 应放在 RRF 之后、最终质量排序之前：
+Cross-encoder 代码已放在 RRF 之后、最终质量排序之前。当前仓库不包含模型权重，未设置 `RAGLOOKER_RERANKER_MODEL_DIR` 时会明确回退到原有数值排序：
 
 ```text
 FAISS/BM25：39,000 → 100 + 100
@@ -298,7 +298,7 @@ P4 FTS5、缓存与部署优化
 ## 12. 当前明确不做的事情
 
 - 不在没有评测证据的情况下继续手工调权重；
-- 不把 Cross-encoder、Tool Calling 或多 chunk 方案描述成已实现功能；
+- 不把 Cross-encoder 的代码接入描述成已经完成质量验证；Tool Calling 和多 chunk 仍未实现；
 - 不为了提高热门游戏比例而牺牲用户明确的语义约束；
 - 不用单次 LLM judge 分数证明系统质量提升；
 - 不在多个重大组件同时变更时进行归因。

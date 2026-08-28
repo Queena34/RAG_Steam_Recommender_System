@@ -10,6 +10,8 @@ dependencies = [
     "nltk>=3.9.4",
     "numpy>=2.4.3",
     "ollama>=0.6.0",
+    "onnxruntime>=1.23.2,<1.24.0",
     "rank-bm25>=0.2.2",
+    "tokenizers>=0.21.0",
     "tqdm>=4.67.3",
 ]
