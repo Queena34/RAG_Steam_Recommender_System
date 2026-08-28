@@ -74,8 +74,19 @@ BM25_CORPUS_VERSION = 2
 # expansion emits far more terms for them, lengthening every stage that follows.
 # At 150 the timeout fired on 3 of 15 runs and silently returned ranking order
 # instead of the generated shortlist.
-LLM_TIMEOUT = 360
-QUERY_INTENT_TIMEOUT = 30
+LLM_TIMEOUT = float(os.environ.get("RAGLOOKER_LLM_TIMEOUT", "30"))
+QUERY_INTENT_TIMEOUT = float(os.environ.get("RAGLOOKER_QUERY_INTENT_TIMEOUT", "10"))
+LLM_ENABLED = os.environ.get("RAGLOOKER_LLM_ENABLED", "1").lower() not in {
+    "0", "false", "no", "off",
+}
+QUERY_EXPANSION_ENABLED = os.environ.get(
+    "RAGLOOKER_QUERY_EXPANSION_ENABLED", "0"
+).lower() not in {"0", "false", "no", "off"}
+QUERY_EXPANSION_TIMEOUT = float(
+    os.environ.get("RAGLOOKER_QUERY_EXPANSION_TIMEOUT", "10")
+)
+LLM_PROVIDER = os.environ.get("RAGLOOKER_LLM_PROVIDER", "ollama").lower()
+DEEPSEEK_MODEL = os.environ.get("RAGLOOKER_DEEPSEEK_MODEL", "deepseek-v4-flash")
 RERANKER_MAX_CANDIDATES = RETRIEVAL_COUNT
 
 # Query-understanding output is deliberately narrower than the eventual
@@ -207,6 +218,8 @@ class GameSearchEngine:
         self.embed_model: str | None = None
         self.query_prefix: str = ""      # set from meta.json by _init_vector_index
         self.llm_model: str | None = None
+        self.llm_provider = "none"
+        self.llm_client = None
         # A timed-out Ollama call cannot be cancelled from Python. Allow only
         # one in-flight call so repeated requests cannot create an unbounded
         # number of daemon threads while an old call is still running.
@@ -329,7 +342,27 @@ class GameSearchEngine:
             print(f"Ollama embedding not available ({e}). Vector search disabled.")
 
     def _init_llm(self) -> None:
-        """Detect the best available Ollama chat/generate model."""
+        """Configure the selected local Ollama or remote DeepSeek chat model."""
+        if not LLM_ENABLED:
+            print("LLM disabled by RAGLOOKER_LLM_ENABLED")
+            return
+        if LLM_PROVIDER == "deepseek":
+            api_key = os.environ.get("DEEPSEEK_API_KEY")
+            if not api_key:
+                print("DeepSeek unavailable: DEEPSEEK_API_KEY is not set")
+                return
+            try:
+                from openai import OpenAI
+                self.llm_client = OpenAI(
+                    api_key=api_key,
+                    base_url="https://api.deepseek.com",
+                )
+                self.llm_provider = "deepseek"
+                self.llm_model = DEEPSEEK_MODEL
+                print(f"LLM provider: deepseek ({self.llm_model})")
+            except Exception as exc:
+                print(f"DeepSeek unavailable: {exc}")
+            return
         try:
             import ollama
             available = [m.model for m in ollama.list().models]
@@ -342,10 +375,14 @@ class GameSearchEngine:
                 for avail in available:
                     if want in avail:
                         self.llm_model = avail
+                        self.llm_provider = "ollama"
+                        self.llm_client = True
                         print(f"LLM model: {avail}")
                         return
             if available:
                 self.llm_model = available[0]
+                self.llm_provider = "ollama"
+                self.llm_client = True
                 print(f"LLM model: {available[0]} (first available)")
         except Exception as e:
             print(f"Ollama LLM not available: {e}")
@@ -686,15 +723,37 @@ class GameSearchEngine:
         return rules
 
     def _call_query_intent(self, prompt: str) -> dict[str, Any] | None:
-        import ollama
-        response = ollama.generate(
-            model=self.llm_model,
-            prompt=prompt,
-            format=QUERY_INTENT_SCHEMA,
-            options={"temperature": 0.0, "num_predict": 300},
-        )
-        data = json.loads(response.response)
+        text = self._llm_text(prompt, schema=QUERY_INTENT_SCHEMA, max_tokens=300)
+        data = json.loads(text)
         return data if isinstance(data, dict) else None
+
+    def _llm_text(
+        self, prompt: str, schema: dict[str, Any] | None = None,
+        temperature: float = 0.0, max_tokens: int = 300,
+    ) -> str:
+        """Return text from the configured LLM provider."""
+        if self.llm_provider == "deepseek":
+            kwargs: dict[str, Any] = {
+                "model": self.llm_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": False,
+            }
+            if schema is not None:
+                kwargs["response_format"] = {"type": "json_object"}
+            response = self.llm_client.chat.completions.create(**kwargs)
+            return response.choices[0].message.content or ""
+
+        import ollama
+        kwargs = {
+            "model": self.llm_model,
+            "prompt": prompt,
+            "options": {"temperature": temperature, "num_predict": max_tokens},
+        }
+        if schema is not None:
+            kwargs["format"] = schema
+        return ollama.generate(**kwargs).response
 
     def _init_reranker(self) -> None:
         """Load an optional pre-exported ONNX cross-encoder.
@@ -808,33 +867,33 @@ class GameSearchEngine:
         return {str(row[0]) for row in rows}
 
     def _expand_query_with_llm(self, query: str) -> str:
-        if not self.llm_model:
+        if not self.llm_model or not QUERY_EXPANSION_ENABLED:
             return query
         try:
-            import ollama
-            resp = ollama.generate(
-                model=self.llm_model,
-                prompt=(
-                    f'Given this Steam game search query: "{query}"\n'
-                    f'List 8-10 related gaming keywords, synonyms, and tags '
-                    f'that would appear in Steam game descriptions, genres, or tags.\n'
-                    f'IMPORTANT: if the query contains negative constraints such as '
-                    f'"without combat", "less farming", "no multiplayer", or "not X", '
-                    f'do NOT include the excluded concepts in your keywords.\n'
-                    f'For example: if query is "relaxing farming", '
-                    f'keywords might be: cozy, harvest, crops, agriculture, '
-                    f'casual, peaceful, simulation, garden, animals, life-sim\n'
-                    f'Reply ONLY with comma-separated keywords. No explanation.'
-                ),
-                options={"temperature": 0.3, "num_predict": 60},
+            expanded_terms = self._call_with_timeout(
+                self._expand_query,
+                QUERY_EXPANSION_TIMEOUT,
+                query,
             )
-            expanded_terms = resp.response.strip()
+            expanded_terms = expanded_terms.strip()
             full_query = f"{query} {expanded_terms}"
             print(f"Query expanded: {full_query}")
             return full_query
         except Exception as e:
             print(f"Query expansion failed: {e}, using original query")
             return query
+
+    def _expand_query(self, query: str):
+        return self._llm_text(
+            prompt=(
+                f'Given this Steam game search query: "{query}"\n'
+                "List 8-10 related gaming keywords, synonyms, and tags "
+                "that would appear in Steam game descriptions, genres, or tags.\n"
+                "Reply ONLY with comma-separated keywords. No explanation."
+            ),
+            temperature=0.3,
+            max_tokens=60,
+        )
 
     def retrieve_candidates(
         self, query: str, intent: dict[str, Any] | None = None
@@ -1549,16 +1608,14 @@ class GameSearchEngine:
 
     def _call_schema(self, prompt: str, temperature: float) -> dict | None:
         """One schema-constrained generation; None if the result is unusable."""
-        import ollama
-
         try:
-            resp = ollama.generate(
-                model=self.llm_model,
-                prompt=prompt,
-                format=RECOMMENDATION_SCHEMA,
-                options={"temperature": temperature, "num_predict": 900},
+            text = self._llm_text(
+                prompt,
+                schema=RECOMMENDATION_SCHEMA,
+                temperature=temperature,
+                max_tokens=900,
             )
-            data = json.loads(resp.response)
+            data = json.loads(text)
         except Exception as e:
             print(f"Structured generation failed: {e}")
             return None

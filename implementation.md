@@ -100,6 +100,10 @@ The resulting `vector_index/` directory contains:
 
 To enable Cross-encoder reranking, provide a pre-exported ONNX model directory containing `model.onnx` and `tokenizer.json`, then set `RAGLOOKER_RERANKER_MODEL_DIR`. The API metadata exposes `reranker_status` and `reranker_applied` so a missing model cannot fail silently.
 
+For local testing without slow Ollama chat generation, set `RAGLOOKER_LLM_ENABLED=0`; the system will use rule-based query parsing and deterministic answer fallback. Optional query expansion is disabled by default and can be enabled with `RAGLOOKER_QUERY_EXPANSION_ENABLED=1`.
+
+The chat provider can be switched to DeepSeek with `RAGLOOKER_LLM_PROVIDER=deepseek`, `DEEPSEEK_API_KEY`, and optional `RAGLOOKER_DEEPSEEK_MODEL`. DeepSeek uses the OpenAI-compatible endpoint; local Ollama remains responsible for embeddings unless the embedding layer is changed separately.
+
 ---
 
 ## 6. 执行步骤
@@ -167,7 +171,5 @@ If you want more fighting but still a strong horror atmosphere, this is a top ch
 
 Best open-world survival with horror flavor: Sons Of The Forest
 This is less “tight corridor terror” and more “craft, build, and survive in a horrifying wilderness.” Best if you want survival systems first and horror second.
-
-
 
 

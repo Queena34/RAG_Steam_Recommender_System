@@ -47,6 +47,16 @@ Both FAISS and BM25 run when available. Their top-100 ranked lists are fused wit
 
 An optional ONNX Cross-encoder can rerank the 50 fused candidates before the final score-based ranking. Set `RAGLOOKER_RERANKER_MODEL_DIR` to a directory containing a pre-exported `model.onnx` and `tokenizer.json`; if the model is missing or fails, the API reports the status and uses the deterministic ranking path.
 
+For a fast local smoke test, disable Ollama chat calls while keeping local retrieval and ranking enabled: `RAGLOOKER_LLM_ENABLED=0`. Query expansion is also disabled by default because it is optional and can add significant latency; enable it with `RAGLOOKER_QUERY_EXPANSION_ENABLED=1`.
+
+The chat layer also supports DeepSeek's OpenAI-compatible API. Set `DEEPSEEK_API_KEY` and choose the provider with `RAGLOOKER_LLM_PROVIDER=deepseek`; the local Ollama embedding service is still used for FAISS retrieval.
+
+```bash
+export RAGLOOKER_LLM_PROVIDER=deepseek
+export DEEPSEEK_API_KEY="your-api-key"
+export RAGLOOKER_DEEPSEEK_MODEL="deepseek-v4-flash"
+```
+
 ---
 
 ## Repository Structure
