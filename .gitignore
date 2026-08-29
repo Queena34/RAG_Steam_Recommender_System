@@ -25,3 +25,20 @@ vector_index_baseline_18k/
 build_index.log
 bm25_cache.pkl
 eval/results/
+
+# Private development notes and evaluation artefacts
+OPTIMIZATION_ROADMAP.md
+OPTIMIZED_DESIGN.md
+PROJECT_REVIEW.md
+implementation.md
+docs/prd/
+docs/report_sections/
+docs/validation/
+eval/judge/
+eval/spike/
+eval/queries_*.jsonl
+eval/topical_spec.jsonl
+vector_index/index.faiss
+
+# Local configuration
+.env

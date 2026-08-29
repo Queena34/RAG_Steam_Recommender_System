@@ -1,5 +1,0 @@
-{"round": 1, "category": "Simple / Vague", "query": "Recommend some relaxing games"}
-{"round": 2, "category": "Detailed Descriptive", "query": "I want games that are intellectually stimulating and require some gaming experience"}
-{"round": 3, "category": "Negation-Constrained", "query": "I don't want cozy or cute games - give me some combat games to play with friends"}
-{"round": 4, "category": "Hard-Constrained", "query": "Free co-op multiplayer games"}
-{"round": 5, "category": "Analogy", "query": "Like Stardew Valley but more challenging"}
