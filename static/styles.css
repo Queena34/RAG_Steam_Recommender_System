@@ -141,6 +141,56 @@ button:disabled {
   color: var(--muted);
 }
 
+.match-reason,
+.match-caveat {
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  background: rgba(255, 247, 239, 0.8);
+}
+
+.match-reason summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.match-reason summary::-webkit-details-marker {
+  display: none;
+}
+
+.match-reason summary::after {
+  content: "+";
+  float: right;
+  font-size: 1rem;
+}
+
+.match-reason[open] summary::after {
+  content: "−";
+}
+
+.match-caveat {
+  background: rgba(255, 239, 222, 0.9);
+}
+
+.match-reason-label {
+  margin: 0 0 0.25rem;
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.match-reason-text {
+  margin-top: 0.55rem;
+}
+
+.match-reason-text,
+.match-caveat-text {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .results-stack {
   display: grid;
   gap: 0.8rem;

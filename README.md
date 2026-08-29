@@ -91,6 +91,8 @@ export RAGLOOKER_DEEPSEEK_MODEL="deepseek-v4-flash"
 | `generate_answer()` | LLM selects candidate `app_id`s and produces reasons/evidence through a JSON schema; falls back when unavailable |
 | `search()` | Orchestrates the full pipeline; returns a fixed JSON shape consumed by the Flask API |
 
+Each returned match also includes a user-facing `why_recommended` explanation and an optional `caveat`. The interface explains why a game fits the request and warns about conflicting attributes without exposing model or retrieval terminology. The API's `answer` field is retained for compatibility, while the UI shows explanations on each game card instead of repeating them in a summary panel. The explanation is collapsed by default and expands when the user clicks its heading.
+
 ### `build_index.py`
 
 Builds one rich document per eligible game using `nomic-embed-text` via Ollama. Documents include metadata, gameplay modes, rating information, and sampled positive/negative reviews. The resulting 768-dimensional vectors are stored in a FAISS `IndexFlatIP` index. This step is run once and may take several hours.

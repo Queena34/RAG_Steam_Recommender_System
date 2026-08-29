@@ -2,7 +2,6 @@ const form = document.querySelector("#search-form");
 const queryField = document.querySelector("#query");
 const submitButton = document.querySelector("#submit-button");
 const statusNode = document.querySelector("#status");
-const answerNode = document.querySelector("#answer");
 const matchesNode = document.querySelector("#matches");
 const matchCountNode = document.querySelector("#match-count");
 const matchTemplate = document.querySelector("#match-template");
@@ -28,6 +27,9 @@ function renderMatches(matches) {
     const title = fragment.querySelector(".match-title");
     const score = fragment.querySelector(".match-score");
     const description = fragment.querySelector(".match-description");
+    const reasonText = fragment.querySelector(".match-reason-text");
+    const caveat = fragment.querySelector(".match-caveat");
+    const caveatText = fragment.querySelector(".match-caveat-text");
     const meta = fragment.querySelector(".match-meta");
     const tags = fragment.querySelector(".match-tags");
     const link = fragment.querySelector(".match-link");
@@ -38,6 +40,9 @@ function renderMatches(matches) {
     title.textContent = match.name;
     score.textContent = `score ${match.score}`;
     description.textContent = match.short_description || "No short description available.";
+    reasonText.textContent = match.why_recommended || "This game matches the description you provided.";
+    caveatText.textContent = match.caveat || "";
+    caveat.hidden = !match.caveat;
 
     const genreText = (match.genres || []).slice(0, 3).join(", ") || "Unknown genre";
     const platformText = Object.entries(match.platforms || {})
@@ -68,7 +73,6 @@ form.addEventListener("submit", async (event) => {
   }
 
   setLoadingState(true, "Querying local RAG pipeline...");
-  answerNode.textContent = "Thinking...";
   matchesNode.innerHTML = "";
   matchCountNode.textContent = "0 games";
 
@@ -84,11 +88,9 @@ form.addEventListener("submit", async (event) => {
       throw new Error(payload.error || "Request failed");
     }
 
-    answerNode.textContent = payload.answer;
     renderMatches(payload.matches || []);
     setLoadingState(false, `Done. Indexed ${payload.meta.indexed_games} games.`);
   } catch (error) {
-    answerNode.textContent = error.message;
     renderMatches([]);
     setLoadingState(false, "Search failed.");
   }

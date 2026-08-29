@@ -64,6 +64,10 @@ Sorts candidates by the pre-computed score plus small explicit-preference bonuse
 
 Calls structured generation inside a 360-second timeout thread. The LLM receives up to 10 ranked candidates with app IDs, names, tags, ratings, and short descriptions. Ollama enforces a schema containing five recommendation slots; the code validates IDs against the candidate set, removes duplicates, measures evidence overlap, retries once at lower temperature when necessary, and tops up from the ranked list when the output is partial. If generation fails or times out, `_simple_answer` returns a plain-text fallback.
 
+Each displayed match also receives a user-facing `why_recommended` explanation and, when catalogue attributes conflict with the request, a `caveat`. The explanation uses the LLM's grounded reason when available and falls back to database-backed tags, genres, modes, and description. The UI presents these as “Why this fits you” and “Good to know”; implementation details such as scores, embeddings, and candidate sets are not shown to users. The API still returns the generated `answer` for compatibility, but the frontend hides the repeated summary and presents explanations only inside each game card.
+
+The deterministic explanation fallback normalizes whitespace and truncates long descriptions at a word boundary, adding an ellipsis when needed. This prevents incomplete words from appearing in the user-facing explanation. The frontend renders `why_recommended` in a native `<details>` disclosure, collapsed by default, while `caveat` remains visible when present.
+
 ---
 
 ## 4. Tech Stack
@@ -171,5 +175,3 @@ If you want more fighting but still a strong horror atmosphere, this is a top ch
 
 Best open-world survival with horror flavor: Sons Of The Forest
 This is less “tight corridor terror” and more “craft, build, and survive in a horrifying wilderness.” Best if you want survival systems first and horror second.
-
-

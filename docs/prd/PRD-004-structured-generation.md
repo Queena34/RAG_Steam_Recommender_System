@@ -211,6 +211,10 @@ C2（Cross-encoder 重排）会改变候选集的顺序，与本变更的效果�
 - [x] **A8** 输出证据支持率数值（不设阈值，仅要求可测得） — `_evidence_support()` 词元重叠度量，5 项构造测试覆盖边界
 - [x] **A9** 单元测试 `test_ranking.py` 32/32、`test_preferences.py` 15/15、`eval/test_metrics.py` 57/57 通过 — 32/32 + 15/15 + 57/57 + 39/39 全部通过
 - [x] **A10** `_generate_with_llm()` 中不再存在游戏名正则解析代码 — 正则解析代码已移除，`grep 'patterns = \['` 返回 0
+- [x] **A11** 推荐卡片解释用户视角的匹配依据，并对冲突属性显示注意事项 — `why_recommended` / `caveat` 字段和前端 “Why this fits you” / “Good to know” 区块
+- [x] **A12** 隐藏与卡片解释重复的汇总文案 — 保留 API `answer` 字段，但前端不再单独展示 summary panel
+- [x] **A13** 回退解释不截断单词 — 长简介按词边界截取并使用省略号，避免出现 `fri.` / `'ide.` 一类残缺文本
+- [x] **A14** 推荐理由默认折叠 — 用户点击 “Why this fits you” 后展开详情，`Good to know` 冲突提醒保持直接可见
 
 ---
 

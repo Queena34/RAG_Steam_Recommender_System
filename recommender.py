@@ -126,6 +126,7 @@ RECOMMENDATION_SCHEMA = {
                     "app_id": {"type": "string"},
                     "reason": {"type": "string"},
                     "evidence": {"type": "string"},
+                    "caveat": {"type": "string"},
                 },
                 "required": ["app_id", "reason", "evidence"],
             },
@@ -176,6 +177,8 @@ class GameRecord:
             "release_date": self.raw.get("release_date"),
             "header_image": self.raw.get("header_image"),
             "store_page": f"https://store.steampowered.com/app/{self.app_id}",
+            "why_recommended": self.raw.get("_why_recommended", ""),
+            "caveat": self.raw.get("_caveat", ""),
             "platforms": {
                 "windows": bool(self.raw.get("windows")),
                 "mac": bool(self.raw.get("mac")),
@@ -573,6 +576,7 @@ class GameSearchEngine:
         if not selected_ids:
             answer = self._simple_answer(query, final_matches)
 
+        self._attach_user_explanations(query, final_matches)
         results = [record.to_result(score) for record, score in final_matches]
 
         return {
@@ -705,6 +709,7 @@ class GameSearchEngine:
             return rules
         prompt = (
             f'Parse this Steam game request into JSON: "{query}"\n'
+            "Return a valid json object and no surrounding commentary.\n"
             "Use only catalogue-verifiable constraints. Treat price, platform, "
             "single-player/co-op/multiplayer as hard constraints. Keep mood, "
             "theme, combat, and other natural-language exclusions in exclude_terms.\n"
@@ -724,8 +729,21 @@ class GameSearchEngine:
 
     def _call_query_intent(self, prompt: str) -> dict[str, Any] | None:
         text = self._llm_text(prompt, schema=QUERY_INTENT_SCHEMA, max_tokens=300)
-        data = json.loads(text)
+        data = self._parse_json_text(text)
         return data if isinstance(data, dict) else None
+
+    @staticmethod
+    def _parse_json_text(text: str) -> Any:
+        """Parse provider JSON, tolerating fenced or slightly wrapped output."""
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return None
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.IGNORECASE)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            match = re.search(r"\{[\s\S]*\}|\[[\s\S]*\]", cleaned)
+            return json.loads(match.group(0)) if match else None
 
     def _llm_text(
         self, prompt: str, schema: dict[str, Any] | None = None,
@@ -733,6 +751,8 @@ class GameSearchEngine:
     ) -> str:
         """Return text from the configured LLM provider."""
         if self.llm_provider == "deepseek":
+            if schema is not None and "json" not in prompt.lower():
+                prompt = "Return a valid json object.\n" + prompt
             kwargs: dict[str, Any] = {
                 "model": self.llm_model,
                 "messages": [{"role": "user", "content": prompt}],
@@ -1463,7 +1483,8 @@ class GameSearchEngine:
         prompt += (
             f'Select the {DEFAULT_MATCH_COUNT} games that BEST match "{query}". '
             f"Consider gameplay mechanics, genre fit, mood, and player feedback.\n"
-            f'Reply ONLY with JSON array: [{{"rank":1,"app_id":"ID","reason":"2 sentences why this matches"}},...]\n'
+            f'Reply ONLY with a valid json object containing a recommendations array: '
+            f'[{{"rank":1,"app_id":"ID","reason":"2 sentences why this matches"}},...]\n'
             f"No explanation outside the JSON."
         )
 
@@ -1598,6 +1619,12 @@ class GameSearchEngine:
             telemetry["generation_mode"] = GEN_FALLBACK
             return self._simple_answer(query, matches), [], telemetry
 
+        for item in kept:
+            rec = by_id[item["app_id"]]
+            rec.raw["_llm_reason"] = str(item.get("reason", "")).strip()
+            rec.raw["_llm_evidence"] = str(item.get("evidence", "")).strip()
+            rec.raw["_llm_caveat"] = str(item.get("caveat", "")).strip()
+
         telemetry["evidence_supported"] = self._evidence_support(kept, by_id)
 
         if len(kept) < DEFAULT_MATCH_COUNT:
@@ -1615,7 +1642,7 @@ class GameSearchEngine:
                 temperature=temperature,
                 max_tokens=900,
             )
-            data = json.loads(text)
+            data = self._parse_json_text(text)
         except Exception as e:
             print(f"Structured generation failed: {e}")
             return None
@@ -1632,20 +1659,25 @@ class GameSearchEngine:
         lines = []
         for rec in records:
             tags = ", ".join(rec._normalize_tags(rec.raw.get("tags"))[:5])
+            genres = ", ".join(str(item) for item in (rec.raw.get("genres") or [])[:4])
+            modes = ", ".join(str(item) for item in (rec.raw.get("categories") or [])[:4])
             pos = rec.raw.get("positive") or 0
             neg = rec.raw.get("negative") or 0
             rating = f"{round(100 * pos / (pos + neg))}% positive" if pos + neg else "unrated"
             lines.append(
-                f"{rec.app_id}: {rec.name} [{tags}] ({rating}) "
+                f"{rec.app_id}: {rec.name} [genres: {genres}; tags: {tags}; "
+                f"modes: {modes}] ({rating}) "
                 f"{rec.short_description[:120]}"
             )
         return (
             f'A player asks for: "{query}"\n\n'
-            f"Candidate games, one per line as app_id: name [tags] (rating) description\n\n"
+            f"Candidate games, one per line as app_id: name [genres, tags, modes] (rating) description\n\n"
             + "\n".join(lines)
             + f"\n\nPick the {DEFAULT_MATCH_COUNT} best matches. For each, give the "
-            f"app_id exactly as listed, a reason it fits this request, and the "
-            f"evidence you used -- a tag, the rating, or wording from the description."
+            f"app_id exactly as listed, a user-facing reason explaining why it fits, "
+            f"the evidence you used, and an optional caveat if it conflicts with "
+            f"part of the request. Use plain language, do not mention models, "
+            f"scores, candidates, embeddings, or semantic similarity."
         )
 
     @staticmethod
@@ -1659,7 +1691,11 @@ class GameSearchEngine:
         for i, item in enumerate(items, 1):
             rec = by_id[item["app_id"]]
             reason = str(item.get("reason", "")).strip()
-            parts.append(f"{i}. {rec.name} — {reason}")
+            caveat = str(item.get("caveat", "")).strip()
+            line = f"{i}. {rec.name} — {reason}"
+            if caveat:
+                line += f"\n   Good to know: {caveat}"
+            parts.append(line)
         return "\n".join(parts)
 
     @staticmethod
@@ -1691,11 +1727,60 @@ class GameSearchEngine:
         return supported / len(items) if items else 0.0
 
     def _simple_answer(self, query: str, matches: list[tuple[GameRecord, float]]) -> str:
-        names = ", ".join(f'"{r.name}"' for r, _ in matches[:3])
-        return (
-            f'For "{query}", the closest matches are: {names}. '
-            "Results are ranked by semantic similarity to your description."
-        )
+        parts = [f'Here is why these games fit "{query}":']
+        for i, (record, _) in enumerate(matches[:DEFAULT_MATCH_COUNT], 1):
+            why, caveat = self._user_facing_explanation(query, record)
+            record.raw["_why_recommended"] = why
+            record.raw["_caveat"] = caveat
+            line = f"{i}. {record.name} — {why}"
+            if caveat:
+                line += f"\n   Good to know: {caveat}"
+            parts.append(line)
+        return "\n".join(parts)
+
+    @staticmethod
+    def _user_facing_explanation(query: str, record: GameRecord) -> tuple[str, str]:
+        """Build a grounded explanation when no natural-language answer exists."""
+        tags = record._normalize_tags(record.raw.get("tags"))
+        genres = [str(g) for g in (record.raw.get("genres") or [])]
+        categories = [str(c) for c in (record.raw.get("categories") or [])]
+        query_lower = query.lower()
+        corpus = " ".join([record.name, record.short_description, *tags, *genres, *categories]).lower()
+        def attribute_is_relevant(value: str) -> bool:
+            normalized = value.lower().replace("-", " ")
+            tokens = [token for token in re.findall(r"[a-z0-9]+", normalized) if len(token) > 2]
+            return normalized in query_lower or any(token in query_lower for token in tokens)
+
+        matched = [value for value in tags + genres + categories if value.lower() in corpus and attribute_is_relevant(value)]
+        matched = list(dict.fromkeys(matched))[:3]
+        if not matched:
+            matched = list(dict.fromkeys(tags + genres))[:2]
+        attributes = ", ".join(matched) or "its gameplay description"
+        excerpt = GameSearchEngine._trim_explanation(record.short_description)
+        why = f"It matches your request through {attributes}, and its description highlights {excerpt}."
+        caveat = ""
+        wants_single = bool(re.search(r"\bsingle[- ]player\b", query_lower))
+        multiplayer = any(value.lower() in {"multi-player", "co-op", "online co-op", "pvp"} for value in categories)
+        if wants_single and multiplayer:
+            caveat = "It also supports multiplayer or co-op, so it is not limited to single-player only."
+        return why, caveat
+
+    @staticmethod
+    def _trim_explanation(text: str, limit: int = 180) -> str:
+        """Keep fallback explanations readable without cutting a word in half."""
+        cleaned = " ".join(str(text or "").split()).strip().rstrip(".")
+        if len(cleaned) <= limit:
+            return cleaned
+        excerpt = cleaned[:limit].rsplit(" ", 1)[0].rstrip(" ,;:-")
+        return f"{excerpt}…"
+
+    def _attach_user_explanations(self, query: str, matches: list[tuple[GameRecord, float]]) -> None:
+        for record, _ in matches:
+            why = str(record.raw.get("_llm_reason", "")).strip()
+            caveat = str(record.raw.get("_llm_caveat", "")).strip()
+            fallback_why, fallback_caveat = self._user_facing_explanation(query, record)
+            record.raw["_why_recommended"] = why or fallback_why
+            record.raw["_caveat"] = caveat or fallback_caveat
 
     # ------------------------------------------------------------------
     # SQLite helpers

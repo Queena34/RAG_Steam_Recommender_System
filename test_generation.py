@@ -84,6 +84,8 @@ check("app_id, reason and evidence are all required",
       set(items["items"]["required"]) == {"app_id", "reason", "evidence"})
 check("app_id is typed as a string",
       items["items"]["properties"]["app_id"]["type"] == "string")
+check("caveat is available for user-facing trade-offs",
+      items["items"]["properties"]["caveat"]["type"] == "string")
 
 # ---------------------------------------------------------------------------
 print("\n--- happy path ---")
@@ -97,6 +99,25 @@ check("mode is structured", tele["generation_mode"] == GEN_STRUCTURED, tele)
 check("nothing rejected", tele["rejected_app_ids"] == 0)
 check("no retry needed", tele["retries"] == 0)
 check("answer names the games", "Title 0" in answer, answer[:80])
+
+fallback_record = game(
+    "200",
+    name="Farm Co-op",
+    tags=["Farming Sim"],
+    genres=["Simulation"],
+    desc="A relaxing farm life where you grow crops with friends.",
+)
+fallback_record.raw["categories"] = ["Single-player", "Multi-player"]
+why, caveat = GameSearchEngine._user_facing_explanation(
+    "relaxing single-player farming game", fallback_record
+)
+check("fallback explanation names catalogue-based fit", "Farming Sim" in why)
+check("fallback explanation warns about mode trade-off", bool(caveat))
+long_description = "A peaceful farming adventure where you grow crops, care for animals, build your home, and explore a friendly countryside with plenty of relaxing activities."
+trimmed = GameSearchEngine._trim_explanation(long_description, limit=70)
+last_word = trimmed[:-1].split()[-1]
+check("fallback explanation does not cut words", last_word in long_description)
+check("long fallback explanation uses an ellipsis", trimmed.endswith("…"))
 
 # A2 --------------------------------------------------------------------
 print("\n--- A2: identifiers outside the candidate set ---")

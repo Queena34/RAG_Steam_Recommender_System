@@ -31,23 +31,11 @@
       </section>
 
       <section class="results-stack">
-        <article class="panel answer-panel spotlight-panel">
-          <div class="panel-header">
-            <div>
-              <p class="section-kicker">Recommendation</p>
-              <h2>LLM answer</h2>
-            </div>
-          </div>
-          <div id="answer" class="answer-copy">
-            Enter a description to retrieve matching games.
-          </div>
-        </article>
-
         <article class="panel matches-panel">
           <div class="panel-header">
             <div>
               <p class="section-kicker">Candidate set</p>
-              <h2>Matches</h2>
+              <h2>Recommended games</h2>
             </div>
             <span id="match-count" class="badge">0 games</span>
           </div>
@@ -65,6 +53,14 @@
             <span class="match-score"></span>
           </div>
           <p class="match-description"></p>
+          <details class="match-reason">
+            <summary class="match-reason-label">Why this fits you</summary>
+            <p class="match-reason-text"></p>
+          </details>
+          <div class="match-caveat">
+            <p class="match-reason-label">Good to know</p>
+            <p class="match-caveat-text"></p>
+          </div>
           <p class="match-meta"></p>
           <div class="match-tags"></div>
           <a class="match-link" target="_blank" rel="noreferrer">Open Steam page</a>
