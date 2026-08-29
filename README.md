@@ -4,6 +4,8 @@ A retrieval-augmented Steam game recommendation system that turns natural-langua
 
 Users can describe the experience they want—such as “a relaxing single-player farming game”—and receive a ranked list of Steam games with a concise explanation of why each result fits.
 
+![Recommendation results with user-facing explanations](assets/recommendation-explanations.png)
+
 ## Highlights
 
 - Natural-language game discovery instead of keyword-only search
